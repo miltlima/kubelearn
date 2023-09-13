@@ -35,7 +35,7 @@ This will show the table above:
 
 ## Questions
 
-1 - Create a new pod called `nginx` with `nginx:latest` image in default namespace.
+1 - Create a new pod called `nginx` with `nginx:alpine` image in default namespace.
 
 2 - Create a new deployment called `nginx-deployment` with `nginx:1.17` image and `4 replicas` in default namespace.
 
