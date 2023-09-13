@@ -45,9 +45,10 @@ func testPod(clientset *kubernetes.Clientset) Result {
 	const (
 		expectedNamespace = "default"
 		expectedPodName   = "nginx"
+		expectedImage     = "nginx:alpine"
 	)
 	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
-	passed := err == nil && pod.Spec.Containers[0].Image == "nginx:alpine" && pod.Name == "nginx"
+	passed := err == nil && pod.Spec.Containers[0].Image == expectedImage && pod.Name == expectedPodName
 	return Result{
 		TestName:   "Question 1 - Deploy a POD nginx name with nginx:alpine image",
 		Passed:     passed,
