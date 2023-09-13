@@ -36,8 +36,9 @@ func main() {
 }
 
 type Result struct {
-	TestName string
-	Passed   bool
+	TestName   string
+	Passed     bool
+	Difficulty string
 }
 
 func testPod(clientset *kubernetes.Clientset) Result {
@@ -48,8 +49,9 @@ func testPod(clientset *kubernetes.Clientset) Result {
 	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
 	passed := err == nil && pod.Spec.Containers[0].Image == "nginx:alpine" && pod.Name == "nginx"
 	return Result{
-		TestName: "Question 1 - Deploy a POD with nginx:alpine image",
-		Passed:   passed,
+		TestName:   "Question 1 - Deploy a POD nginx name with nginx:alpine image",
+		Passed:     passed,
+		Difficulty: "Easy",
 	}
 }
 
@@ -58,13 +60,14 @@ func testDeployment(clientset *kubernetes.Clientset) Result {
 		expectedNamespace      = "default"
 		expectedDeploymentName = "nginx-deployment"
 		expectedReplicas       = int32(4)
-		expectedImage          = "nginx:alpine"
+		expectedImage          = "nginx:1.17"
 	)
 	deployment, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
 	passed := err == nil && expectedDeploymentName == deployment.Name && expectedReplicas == *deployment.Spec.Replicas && expectedImage == deployment.Spec.Template.Spec.Containers[0].Image
 	return Result{
-		TestName: "Question 2 - Create a deployment with nginx:alpine image and 4 replicas",
-		Passed:   passed,
+		TestName:   "Question 2 - Create a deployment nginx-deployment with nginx:alpine image and 4 replicas",
+		Passed:     passed,
+		Difficulty: "Medium",
 	}
 }
 
@@ -81,23 +84,24 @@ func testDeploymentAndService(clientset *kubernetes.Clientset) Result {
 	service, err := clientset.CoreV1().Services(expectedNamespace).Get(context.TODO(), expectedServiceName, metav1.GetOptions{})
 	passed := err == nil && expectedDeploymentName == deployment.Name && expectedServiceName == service.Name && expectedServicePort == service.Spec.Ports[0].Port && expectedImage == deployment.Spec.Template.Spec.Containers[0].Image
 	return Result{
-		TestName: "Question 3 - Create a deployment with redis:alpine image and a service with port 6379 in namespace latam",
-		Passed:   passed,
+		TestName:   "Question 3 - Create a deployment redis name with redis:alpine image and a service with port 6379 in namespace latam",
+		Passed:     passed,
+		Difficulty: "Hard",
 	}
 }
 
 func renderResultsTable(results []Result) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Test your knowledge of Kubernetes", "Result"})
+	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes", "Result", "Difficulty"})
 
 	table.SetAutoWrapText(false)
 
 	for _, result := range results {
-		passedStr := color.GreenString("Passed")
+		passedStr := color.GreenString("✅Pass")
 		if !result.Passed {
-			passedStr = color.RedString("Failed")
+			passedStr = color.RedString("🆘Fail")
 		}
-		row := []string{result.TestName, passedStr}
+		row := []string{result.TestName, passedStr, result.Difficulty}
 		table.Append(row)
 	}
 
