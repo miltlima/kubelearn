@@ -34,4 +34,4 @@ This will show the table above:
 
 4 - Create a namespace called `emea`
 
-5 - Create a configmap emea-configmap with data France=Paris
+5 - Create a configmap `europe-configmap` with data France=Paris

@@ -100,7 +100,7 @@ func testNamespace(clientset *kubernetes.Clientset) Result {
 	namespace, err := clientset.CoreV1().Namespaces().Get(context.TODO(), expectedNamespace, metav1.GetOptions{})
 	passed := err == nil && expectedNamespace == namespace.Name
 	return Result{
-		TestName:   "Question 4 - Create a namespace emea",
+		TestName:   "Question 4 - Create a namespace europe",
 		Passed:     passed,
 		Difficulty: "Easy",
 	}
@@ -108,14 +108,15 @@ func testNamespace(clientset *kubernetes.Clientset) Result {
 
 func testConfigMap(clientset *kubernetes.Clientset) Result {
 	const (
+		expectedNamespace     = "default"
 		expectedConfigMapName = "europe-configmap"
 		expectedDataKey       = "France"
-		expectedData          = "Paris"
+		expectedDataValue     = "Paris"
 	)
-	configMap, err := clientset.CoreV1().ConfigMaps(expectedConfigMapName).Get(context.TODO(), expectedConfigMapName, metav1.GetOptions{})
-	passed := err == nil && expectedConfigMapName == configMap.Name && expectedDataKey == configMap.Data[expectedDataKey] && expectedData == configMap.Data[expectedData]
+	configMap, err := clientset.CoreV1().ConfigMaps(expectedNamespace).Get(context.TODO(), expectedConfigMapName, metav1.GetOptions{})
+	passed := err == nil && expectedConfigMapName == configMap.Name && expectedDataValue == configMap.Data[expectedDataKey]
 	return Result{
-		TestName:   "Question 5 - Create a configmap emea-configmap with data France=Paris",
+		TestName:   "Question 5 - Create a configmap europe-configmap with data France=Paris",
 		Passed:     passed,
 		Difficulty: "Medium",
 	}
