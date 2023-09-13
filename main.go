@@ -30,6 +30,8 @@ func main() {
 		testPod(clientset),
 		testDeployment(clientset),
 		testDeploymentAndService(clientset),
+		testNamespace(clientset),
+		testConfigMap(clientset),
 	}
 
 	renderResultsTable(results)
@@ -50,7 +52,7 @@ func testPod(clientset *kubernetes.Clientset) Result {
 	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
 	passed := err == nil && pod.Spec.Containers[0].Image == expectedImage && pod.Name == expectedPodName
 	return Result{
-		TestName:   "Question 1 - Deploy a POD nginx name with nginx:alpine image",
+		TestName:   "Question 1 - Deploy a pod nginx name with nginx:alpine image",
 		Passed:     passed,
 		Difficulty: "Easy",
 	}
@@ -88,6 +90,34 @@ func testDeploymentAndService(clientset *kubernetes.Clientset) Result {
 		TestName:   "Question 3 - Create a deployment redis name with redis:alpine image and a service with port 6379 in namespace latam",
 		Passed:     passed,
 		Difficulty: "Hard",
+	}
+}
+
+func testNamespace(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace = "emea"
+	)
+	namespace, err := clientset.CoreV1().Namespaces().Get(context.TODO(), expectedNamespace, metav1.GetOptions{})
+	passed := err == nil && expectedNamespace == namespace.Name
+	return Result{
+		TestName:   "Question 4 - Create a namespace emea",
+		Passed:     passed,
+		Difficulty: "Easy",
+	}
+}
+
+func testConfigMap(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedConfigMapName = "europe-configmap"
+		expectedDataKey       = "France"
+		expectedData          = "Paris"
+	)
+	configMap, err := clientset.CoreV1().ConfigMaps(expectedConfigMapName).Get(context.TODO(), expectedConfigMapName, metav1.GetOptions{})
+	passed := err == nil && expectedConfigMapName == configMap.Name && expectedDataKey == configMap.Data[expectedDataKey] && expectedData == configMap.Data[expectedData]
+	return Result{
+		TestName:   "Question 5 - Create a configmap emea-configmap with data France=Paris",
+		Passed:     passed,
+		Difficulty: "Medium",
 	}
 }
 
