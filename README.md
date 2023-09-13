@@ -22,16 +22,7 @@ go run main.go
 
 This will show the table above:
 
-```bash
-+---------------------------------------------------------------------------------------------------------------------+--------+------------+
-|                                                KUBELEARN - TEST YOUR                                                | RESULT | DIFFICULTY |
-|                                               KNOWLEDGE OF KUBERNETES                                               |        |            |
-+---------------------------------------------------------------------------------------------------------------------+--------+------------+
-| Question 1 - Deploy a POD nginx name with nginx:alpine image                                                        | ✅Pass | Easy       |
-| Question 2 - Create a deployment nginx-deployment with nginx:alpine image and 4 replicas                            | 🆘Fail | Medium     |
-| Question 3 - Create a deployment redis name with redis:alpine image and a service with port 6379 in namespace latam | 🆘Fail | Hard       |
-+---------------------------------------------------------------------------------------------------------------------+--------+------------+
-```
+![Kubelearn](images/kubelearn.png)
 
 ## Questions
 
