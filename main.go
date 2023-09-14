@@ -32,6 +32,7 @@ func main() {
 		testDeploymentAndService(clientset),
 		testNamespace(clientset),
 		testConfigMap(clientset),
+		testLabel(clientset),
 	}
 
 	renderResultsTable(results)
@@ -117,6 +118,24 @@ func testConfigMap(clientset *kubernetes.Clientset) Result {
 	passed := err == nil && expectedConfigMapName == configMap.Name && expectedDataValue == configMap.Data[expectedDataKey]
 	return Result{
 		TestName:   "Question 5 - Create a configmap europe-configmap with data France=Paris",
+		Passed:     passed,
+		Difficulty: "Medium",
+	}
+}
+
+func testLabel(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace  = "asia"
+		expectedPodName    = "tshoot"
+		expectedImage      = "amazon/amazon-ecs-network-sidecar:latest"
+		expectedLabelKey   = "country"
+		expectedLabelValue = "china"
+	)
+	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
+	passed := err == nil && expectedImage == pod.Spec.Containers[0].Image && expectedLabelValue == pod.ObjectMeta.Labels[expectedLabelKey]
+
+	return Result{
+		TestName:   "Question 6 - Create a pod thsoot with label country=china with amazon/amazon-ecs-network-sidecar:latest image and namespace asia",
 		Passed:     passed,
 		Difficulty: "Medium",
 	}
