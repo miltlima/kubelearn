@@ -34,4 +34,6 @@ This will show the table above:
 
 4 - Create a namespace called `emea`
 
-5 - Create a configmap `europe-configmap` with data France=Paris
+5 - Create a configmap `europe-configmap` with data `France=Paris`
+
+6 - Create a pod `thsoot` with label `country=china` with `amazon/amazon-ecs-network-sidecar:latest` image and namespace `asia`
