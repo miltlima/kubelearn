@@ -37,3 +37,7 @@ This will show the table above:
 5 - Create a configmap `europe-configmap` with data `France=Paris`
 
 6 - Create a pod `thsoot` with label `country=china` with `amazon/amazon-ecs-network-sidecar:latest` image and namespace `asia`
+
+7 - Create a persistent volume `unicorn-pv` with capacity `1Gi` and access mode `ReadWriteMany` and host path `/tmp/data`
+
+8 - Create a persistent volume claim `unicorn-pvc` with capacity `400Mi` and access mode `ReadWriteMany`

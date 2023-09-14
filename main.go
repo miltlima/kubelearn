@@ -33,6 +33,8 @@ func main() {
 		testNamespace(clientset),
 		testConfigMap(clientset),
 		testLabel(clientset),
+		testPersistentVolume(clientset),
+		testPersistentVolumeClaim(clientset),
 	}
 
 	renderResultsTable(results)
@@ -53,7 +55,7 @@ func testPod(clientset *kubernetes.Clientset) Result {
 	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
 	passed := err == nil && pod.Spec.Containers[0].Image == expectedImage && pod.Name == expectedPodName
 	return Result{
-		TestName:   "Question 1 - Deploy a pod nginx name with nginx:alpine image",
+		TestName:   "Question 1 - Create a pod nginx name with nginx:alpine image",
 		Passed:     passed,
 		Difficulty: "Easy",
 	}
@@ -141,6 +143,40 @@ func testLabel(clientset *kubernetes.Clientset) Result {
 	}
 }
 
+func testPersistentVolume(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedPersistentVolumeName = "unicorn-pv"
+		expectedCapacity             = "1Gi"
+		expectedAccessMode           = "ReadWriteMany"
+		expectedHostPath             = "/tmp/data"
+	)
+	pv, err := clientset.CoreV1().PersistentVolumes().Get(context.TODO(), expectedPersistentVolumeName, metav1.GetOptions{})
+	passed := err == nil && expectedCapacity == pv.Spec.Capacity.Storage().String() && expectedAccessMode == pv.Spec.AccessModes[0] && expectedHostPath == pv.Spec.HostPath.Path
+
+	return Result{
+		TestName:   "Question 7 - Create a persistent volume unicorn-pv with capacity 1Gi and access mode ReadWriteMany and host path /tmp/data",
+		Passed:     passed,
+		Difficulty: "Medium",
+	}
+}
+
+func testPersistentVolumeClaim(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace                 = "default"
+		expectedPersistentVolumeClaimName = "unicorn-pvc"
+		expectedAccessMode                = "ReadWriteMany"
+		expectedCapacity                  = "400Mi"
+	)
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims(expectedNamespace).Get(context.TODO(), expectedPersistentVolumeClaimName, metav1.GetOptions{})
+	passed := err == nil && expectedCapacity == pvc.Spec.Resources.Requests.Storage().String() && expectedAccessMode == pvc.Spec.AccessModes[0]
+
+	return Result{
+		TestName:   "Question 8 - Create a persistent volume claim unicorn-pvc with capacity 400Mi and access mode ReadWriteMany",
+		Passed:     passed,
+		Difficulty: "Medium",
+	}
+}
+
 func renderResultsTable(results []Result) {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes", "Result", "Difficulty"})
@@ -148,9 +184,9 @@ func renderResultsTable(results []Result) {
 	table.SetAutoWrapText(false)
 
 	for _, result := range results {
-		passedStr := color.GreenString("✅Pass")
+		passedStr := color.GreenString("✅ Pass")
 		if !result.Passed {
-			passedStr = color.RedString("🆘Fail")
+			passedStr = color.RedString("🆘 Fail")
 		}
 		row := []string{result.TestName, passedStr, result.Difficulty}
 		table.Append(row)
