@@ -35,6 +35,7 @@ func main() {
 		testLabel(clientset),
 		testPersistentVolume(clientset),
 		testPersistentVolumeClaim(clientset),
+		testPodVolumeClaim(clientset),
 	}
 
 	renderResultsTable(results)
@@ -52,8 +53,12 @@ func testPod(clientset *kubernetes.Clientset) Result {
 		expectedPodName   = "nginx"
 		expectedImage     = "nginx:alpine"
 	)
+
 	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
-	passed := err == nil && pod.Spec.Containers[0].Image == expectedImage && pod.Name == expectedPodName
+	passed := err == nil &&
+		pod.Spec.Containers[0].Image == expectedImage &&
+		pod.Name == expectedPodName
+
 	return Result{
 		TestName:   "Question 1 - Create a pod nginx name with nginx:alpine image",
 		Passed:     passed,
@@ -68,8 +73,13 @@ func testDeployment(clientset *kubernetes.Clientset) Result {
 		expectedReplicas       = int32(4)
 		expectedImage          = "nginx:1.17"
 	)
+
 	deployment, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
-	passed := err == nil && expectedDeploymentName == deployment.Name && expectedReplicas == *deployment.Spec.Replicas && expectedImage == deployment.Spec.Template.Spec.Containers[0].Image
+	passed := err == nil &&
+		expectedDeploymentName == deployment.Name &&
+		expectedReplicas == *deployment.Spec.Replicas &&
+		expectedImage == deployment.Spec.Template.Spec.Containers[0].Image
+
 	return Result{
 		TestName:   "Question 2 - Create a deployment nginx-deployment with nginx:alpine image and 4 replicas",
 		Passed:     passed,
@@ -88,7 +98,12 @@ func testDeploymentAndService(clientset *kubernetes.Clientset) Result {
 
 	deployment, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
 	service, err := clientset.CoreV1().Services(expectedNamespace).Get(context.TODO(), expectedServiceName, metav1.GetOptions{})
-	passed := err == nil && expectedDeploymentName == deployment.Name && expectedServiceName == service.Name && expectedServicePort == service.Spec.Ports[0].Port && expectedImage == deployment.Spec.Template.Spec.Containers[0].Image
+	passed := err == nil &&
+		expectedDeploymentName == deployment.Name &&
+		expectedServiceName == service.Name &&
+		expectedServicePort == service.Spec.Ports[0].Port &&
+		expectedImage == deployment.Spec.Template.Spec.Containers[0].Image
+
 	return Result{
 		TestName:   "Question 3 - Create a deployment redis name with redis:alpine image and a service with port 6379 in namespace latam",
 		Passed:     passed,
@@ -100,8 +115,11 @@ func testNamespace(clientset *kubernetes.Clientset) Result {
 	const (
 		expectedNamespace = "emea"
 	)
+
 	namespace, err := clientset.CoreV1().Namespaces().Get(context.TODO(), expectedNamespace, metav1.GetOptions{})
-	passed := err == nil && expectedNamespace == namespace.Name
+	passed := err == nil &&
+		expectedNamespace == namespace.Name
+
 	return Result{
 		TestName:   "Question 4 - Create a namespace europe",
 		Passed:     passed,
@@ -116,8 +134,12 @@ func testConfigMap(clientset *kubernetes.Clientset) Result {
 		expectedDataKey       = "France"
 		expectedDataValue     = "Paris"
 	)
+
 	configMap, err := clientset.CoreV1().ConfigMaps(expectedNamespace).Get(context.TODO(), expectedConfigMapName, metav1.GetOptions{})
-	passed := err == nil && expectedConfigMapName == configMap.Name && expectedDataValue == configMap.Data[expectedDataKey]
+	passed := err == nil &&
+		expectedConfigMapName == configMap.Name &&
+		expectedDataValue == configMap.Data[expectedDataKey]
+
 	return Result{
 		TestName:   "Question 5 - Create a configmap europe-configmap with data France=Paris",
 		Passed:     passed,
@@ -133,8 +155,11 @@ func testLabel(clientset *kubernetes.Clientset) Result {
 		expectedLabelKey   = "country"
 		expectedLabelValue = "china"
 	)
+
 	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
-	passed := err == nil && expectedImage == pod.Spec.Containers[0].Image && expectedLabelValue == pod.ObjectMeta.Labels[expectedLabelKey]
+	passed := err == nil &&
+		expectedImage == pod.Spec.Containers[0].Image &&
+		expectedLabelValue == pod.ObjectMeta.Labels[expectedLabelKey]
 
 	return Result{
 		TestName:   "Question 6 - Create a pod thsoot with label country=china with amazon/amazon-ecs-network-sidecar:latest image and namespace asia",
@@ -150,8 +175,12 @@ func testPersistentVolume(clientset *kubernetes.Clientset) Result {
 		expectedAccessMode           = "ReadWriteMany"
 		expectedHostPath             = "/tmp/data"
 	)
+
 	pv, err := clientset.CoreV1().PersistentVolumes().Get(context.TODO(), expectedPersistentVolumeName, metav1.GetOptions{})
-	passed := err == nil && expectedCapacity == pv.Spec.Capacity.Storage().String() && expectedAccessMode == pv.Spec.AccessModes[0] && expectedHostPath == pv.Spec.HostPath.Path
+	passed := err == nil &&
+		expectedCapacity == pv.Spec.Capacity.Storage().String() &&
+		expectedAccessMode == pv.Spec.AccessModes[0] &&
+		expectedHostPath == pv.Spec.HostPath.Path
 
 	return Result{
 		TestName:   "Question 7 - Create a persistent volume unicorn-pv with capacity 1Gi and access mode ReadWriteMany and host path /tmp/data",
@@ -167,13 +196,40 @@ func testPersistentVolumeClaim(clientset *kubernetes.Clientset) Result {
 		expectedAccessMode                = "ReadWriteMany"
 		expectedCapacity                  = "400Mi"
 	)
+
 	pvc, err := clientset.CoreV1().PersistentVolumeClaims(expectedNamespace).Get(context.TODO(), expectedPersistentVolumeClaimName, metav1.GetOptions{})
-	passed := err == nil && expectedCapacity == pvc.Spec.Resources.Requests.Storage().String() && expectedAccessMode == pvc.Spec.AccessModes[0]
+	passed := err == nil &&
+		expectedCapacity == pvc.Spec.Resources.Requests.Storage().String() &&
+		expectedAccessMode == pvc.Spec.AccessModes[0]
 
 	return Result{
 		TestName:   "Question 8 - Create a persistent volume claim unicorn-pvc with capacity 400Mi and access mode ReadWriteMany",
 		Passed:     passed,
 		Difficulty: "Medium",
+	}
+}
+
+func testPodVolumeClaim(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedPodName               = "webserver"
+		expectedNamespace             = "public"
+		expectedVolumeName            = "unicorn-pv"
+		expectedPersistentVolumeClaim = "unicorn-pvc"
+		expectedImage                 = "nginx:alpine"
+		expectedVolumeMount           = "/usr/share/nginx/html"
+	)
+
+	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
+	passed := err == nil &&
+		expectedImage == pod.Spec.Containers[0].Image &&
+		expectedPersistentVolumeClaim == pod.Spec.Volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName &&
+		expectedVolumeMount == pod.Spec.Containers[0].VolumeMounts[0].MountPath &&
+		expectedVolumeName == pod.Spec.Volumes[0].Name
+
+	return Result{
+		TestName:   "Question 9 - Create a pod webserver in public namespace with nginx:alpine image and a volume mount /usr/share/nginx/html and a persistent volume claim unicorn-pvc",
+		Passed:     passed,
+		Difficulty: "Hard",
 	}
 }
 

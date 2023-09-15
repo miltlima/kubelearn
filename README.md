@@ -41,3 +41,5 @@ This will show the table above:
 7 - Create a persistent volume `unicorn-pv` with capacity `1Gi` and access mode `ReadWriteMany` and host path `/tmp/data`
 
 8 - Create a persistent volume claim `unicorn-pvc` with capacity `400Mi` and access mode `ReadWriteMany`
+
+9 - Create a pod `webserver` in `public` namespace with `nginx:alpine` image and a volume mount `/usr/share/nginx/html` and a persistent volume claim `unicorn-pvc`
