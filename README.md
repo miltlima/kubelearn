@@ -48,9 +48,9 @@ make clean
 
 9 - Create a pod `webserver` in `public` namespace with `nginx:alpine` image and a volume mount `/usr/share/nginx/html` and a persistent volume claim `unicorn-pvc`
 
-10 - Question 10 - There is a pod with problem, Can you able to solve it ?
+10 - There is a pod with problem, Can you able to solve it ?
 
-11 - Question 11 - Create a network policy allow-policy-colors with to allow redmobile-webserver to access bluemobile-dbcache (There objects are created in colors namespace)
+11 - Create a network policy allow-policy-colors with to allow redmobile-webserver to access bluemobile-dbcache (There objects are created in colors namespace)
 
 ### Runnning the following command
 
