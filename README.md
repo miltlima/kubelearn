@@ -14,17 +14,21 @@ Enter inside folder kubelearn
 cd kubelearn
 ```
 
-Runnning the following command:
+Prepare environment ( this will create kubernetes objects needed for some questions)
 
 ```bash
-go run main.go
+make all 
 ```
 
-This will show the table above:
+For remove kubernetes objects use the following command
 
-![Kubelearn](images/kubelearn.png)
+```bash
+make clean
+```
 
-## Questions
+## Answer the questions below
+
+### Questions
 
 1 - Create a new pod called `nginx` with `nginx:alpine` image in default namespace.
 
@@ -43,3 +47,17 @@ This will show the table above:
 8 - Create a persistent volume claim `unicorn-pvc` with capacity `400Mi` and access mode `ReadWriteMany`
 
 9 - Create a pod `webserver` in `public` namespace with `nginx:alpine` image and a volume mount `/usr/share/nginx/html` and a persistent volume claim `unicorn-pvc`
+
+10 - Question 10 - There is a pod with problem, Can you able to solve it ?
+
+11 - Question 11 - Create a network policy allow-policy-colors with to allow redmobile-webserver to access bluemobile-dbcache (There objects are created in colors namespace)
+
+### Runnning the following command
+
+```bash
+go run main.go
+```
+
+### This will show the table above
+
+![Kubelearn](images/kubelearn.png)
