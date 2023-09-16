@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bandai
+spec: {}
+status: {}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gundamv
+  namespace: bandai
+  labels:
+    name: gundamv
+spec:
+  containers:
+  - name: gundamv
+    image: nginxxx:alpine
+    resources: {}
+    ports:
+    - containerPort: 80
