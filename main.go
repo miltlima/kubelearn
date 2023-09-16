@@ -5,7 +5,9 @@ import (
 	"log"
 	"os"
 
+	v1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -36,6 +38,8 @@ func main() {
 		testPersistentVolume(clientset),
 		testPersistentVolumeClaim(clientset),
 		testPodVolumeClaim(clientset),
+		testPodError(clientset),
+		testNetPolRule(clientset),
 	}
 
 	renderResultsTable(results)
@@ -233,6 +237,43 @@ func testPodVolumeClaim(clientset *kubernetes.Clientset) Result {
 	}
 }
 
+func testPodError(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedPodName   = "gundamv"
+		expectedImage     = "nginx:alpine"
+		expectedNamespace = "bandai"
+	)
+	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
+	passed := err == nil &&
+		expectedImage == pod.Spec.Containers[0].Image
+
+	return Result{
+		TestName:   "Question 10 - There is a pod with problem, Can you able to solve it ? Find the problem and fix it",
+		Passed:     passed,
+		Difficulty: "Medium",
+	}
+}
+
+func testNetPolRule(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace  = "colors"
+		expectedNetPolName = "allow-policy-colors"
+		expectedFromLabel  = "tier=frontend"
+		expectedToLabel    = "tier=backend"
+		expectedPort       = int32(6379)
+	)
+
+	netPol, err := clientset.NetworkingV1().NetworkPolicies(expectedNamespace).Get(context.TODO(), expectedNetPolName, metav1.GetOptions{})
+	passed := err == nil && hasCorrectIngressRule(netPol.Spec.Ingress)
+
+	return Result{
+		TestName:   "Question 11 - Create a network policy allow-policy-colors with to allow redmobile-webserver to access bluemobile-dbcache (There objects are created in colors namespace)",
+		Passed:     passed,
+		Difficulty: "Hard",
+	}
+
+}
+
 func renderResultsTable(results []Result) {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes", "Result", "Difficulty"})
@@ -249,4 +290,23 @@ func renderResultsTable(results []Result) {
 	}
 
 	table.Render()
+}
+
+// hasCorrectIngressRule checks if the network policy has correct ingress rule this is a function
+func hasCorrectIngressRule(ingressRules []v1.NetworkPolicyIngressRule) bool {
+	for _, rule := range ingressRules {
+		for _, from := range rule.From {
+			if from.PodSelector != nil {
+				selector, err := metav1.LabelSelectorAsSelector(from.PodSelector)
+				if err == nil && selector.Matches(labels.Set{"tier": "frontend"}) {
+					for _, port := range rule.Ports {
+						if port.Port != nil && port.Port.IntVal == 6379 {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
 }
