@@ -1,0 +1,25 @@
+# This is an example .goreleaser.yml file with some sensible defaults.
+# Make sure to check the documentation at https://goreleaser.com
+
+builds:
+- binary: kubelearn
+  env:
+  - CG0_ENABLED=0
+  goos:
+  - linux
+  - darwin
+  - windows
+  goarch:
+  - amd64
+  - arm64
+  - arm
+  ldflags: -s -w
+
+checksum:
+  name_template: 'checksums.txt'
+
+archives:
+- format: binary
+  format_overrides:
+  - goos: windows
+    format: zip
