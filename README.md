@@ -43,6 +43,8 @@ make clean
 | 9 | Create a pod `webserver` in `public` namespace with `nginx:alpine` image and a volume mount `/usr/share/nginx/html` and a persistent volume claim `unicorn-pvc`|
 | 10| There is a pod with problem, Can you able to solve it ?|
 | 11| Create a network policy `allow-policy-colors` to allow `redmobile-webserver` to access `bluemobile-dbcache` (There objects are created in colors namespace)|
+| 12| Create a secret `secret-colors` with data `color=red` in `colors` namespace|
+| 13| Add a secret `secret-purple` with data `singer=prince` to the pod `purple` with image `redis:alpine` in `colors` namespace|
 
 ### Running the following command
 
