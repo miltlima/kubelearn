@@ -29,17 +29,19 @@ func main() {
 	}
 
 	results := []Result{
-		testPod(clientset),
-		testDeployment(clientset),
-		testDeploymentAndService(clientset),
-		testNamespace(clientset),
-		testConfigMap(clientset),
-		testLabel(clientset),
-		testPersistentVolume(clientset),
-		testPersistentVolumeClaim(clientset),
-		testPodVolumeClaim(clientset),
-		testPodError(clientset),
-		testNetPolRule(clientset),
+		createPod(clientset),
+		createDeployment(clientset),
+		createDeploymentAndService(clientset),
+		createNamespace(clientset),
+		createConfigMap(clientset),
+		createLabel(clientset),
+		createPersistentVolume(clientset),
+		createPersistentVolumeClaim(clientset),
+		createPodVolumeClaim(clientset),
+		checkPodError(clientset),
+		createNetPolRule(clientset),
+		createSecret(clientset),
+		createPodAddSecret(clientset),
 	}
 
 	renderResultsTable(results)
@@ -51,7 +53,7 @@ type Result struct {
 	Difficulty string
 }
 
-func testPod(clientset *kubernetes.Clientset) Result {
+func createPod(clientset *kubernetes.Clientset) Result {
 	const (
 		expectedNamespace = "default"
 		expectedPodName   = "nginx"
@@ -70,7 +72,7 @@ func testPod(clientset *kubernetes.Clientset) Result {
 	}
 }
 
-func testDeployment(clientset *kubernetes.Clientset) Result {
+func createDeployment(clientset *kubernetes.Clientset) Result {
 	const (
 		expectedNamespace      = "default"
 		expectedDeploymentName = "nginx-deployment"
@@ -91,7 +93,7 @@ func testDeployment(clientset *kubernetes.Clientset) Result {
 	}
 }
 
-func testDeploymentAndService(clientset *kubernetes.Clientset) Result {
+func createDeploymentAndService(clientset *kubernetes.Clientset) Result {
 	const (
 		expectedNamespace      = "latam"
 		expectedDeploymentName = "redis"
@@ -115,7 +117,7 @@ func testDeploymentAndService(clientset *kubernetes.Clientset) Result {
 	}
 }
 
-func testNamespace(clientset *kubernetes.Clientset) Result {
+func createNamespace(clientset *kubernetes.Clientset) Result {
 	const (
 		expectedNamespace = "emea"
 	)
@@ -131,7 +133,7 @@ func testNamespace(clientset *kubernetes.Clientset) Result {
 	}
 }
 
-func testConfigMap(clientset *kubernetes.Clientset) Result {
+func createConfigMap(clientset *kubernetes.Clientset) Result {
 	const (
 		expectedNamespace     = "default"
 		expectedConfigMapName = "europe-configmap"
@@ -151,7 +153,7 @@ func testConfigMap(clientset *kubernetes.Clientset) Result {
 	}
 }
 
-func testLabel(clientset *kubernetes.Clientset) Result {
+func createLabel(clientset *kubernetes.Clientset) Result {
 	const (
 		expectedNamespace  = "asia"
 		expectedPodName    = "tshoot"
@@ -172,7 +174,7 @@ func testLabel(clientset *kubernetes.Clientset) Result {
 	}
 }
 
-func testPersistentVolume(clientset *kubernetes.Clientset) Result {
+func createPersistentVolume(clientset *kubernetes.Clientset) Result {
 	const (
 		expectedPersistentVolumeName = "unicorn-pv"
 		expectedCapacity             = "1Gi"
@@ -193,7 +195,7 @@ func testPersistentVolume(clientset *kubernetes.Clientset) Result {
 	}
 }
 
-func testPersistentVolumeClaim(clientset *kubernetes.Clientset) Result {
+func createPersistentVolumeClaim(clientset *kubernetes.Clientset) Result {
 	const (
 		expectedNamespace                 = "default"
 		expectedPersistentVolumeClaimName = "unicorn-pvc"
@@ -213,7 +215,7 @@ func testPersistentVolumeClaim(clientset *kubernetes.Clientset) Result {
 	}
 }
 
-func testPodVolumeClaim(clientset *kubernetes.Clientset) Result {
+func createPodVolumeClaim(clientset *kubernetes.Clientset) Result {
 	const (
 		expectedPodName               = "webserver"
 		expectedNamespace             = "public"
@@ -237,11 +239,11 @@ func testPodVolumeClaim(clientset *kubernetes.Clientset) Result {
 	}
 }
 
-func testPodError(clientset *kubernetes.Clientset) Result {
+func checkPodError(clientset *kubernetes.Clientset) Result {
 	const (
+		expectedNamespace = "bandai"
 		expectedPodName   = "gundamv"
 		expectedImage     = "nginx:alpine"
-		expectedNamespace = "bandai"
 	)
 	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
 	passed := err == nil &&
@@ -254,7 +256,7 @@ func testPodError(clientset *kubernetes.Clientset) Result {
 	}
 }
 
-func testNetPolRule(clientset *kubernetes.Clientset) Result {
+func createNetPolRule(clientset *kubernetes.Clientset) Result {
 	const (
 		expectedNamespace  = "colors"
 		expectedNetPolName = "allow-policy-colors"
@@ -271,13 +273,55 @@ func testNetPolRule(clientset *kubernetes.Clientset) Result {
 		Passed:     passed,
 		Difficulty: "Hard",
 	}
+}
 
+func createSecret(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace  = "colors"
+		expectedSecretName = "secret-colors"
+		expectedDataKey    = "color"
+		expectedDataValue  = "red"
+	)
+
+	secret, err := clientset.CoreV1().Secrets(expectedNamespace).Get(context.TODO(), expectedSecretName, metav1.GetOptions{})
+	passed := err == nil &&
+		expectedSecretName == secret.Name &&
+		expectedDataValue == string(secret.Data[expectedDataKey])
+
+	return Result{
+		TestName:   "Question 12 - Create a secret secret-colors with data color=red in colors namespace",
+		Passed:     passed,
+		Difficulty: "Easy",
+	}
+}
+
+func createPodAddSecret(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace  = "colors"
+		expectedSecretName = "secret-purple"
+		expectedPodName    = "purple"
+		expectedImage      = "redis:alpine"
+		expectedDataKey    = "singer"
+		expectedDataValue  = "prince"
+	)
+
+	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
+	secret, err := clientset.CoreV1().Secrets(expectedNamespace).Get(context.TODO(), expectedSecretName, metav1.GetOptions{})
+	passed := err == nil &&
+		expectedSecretName == pod.Spec.Volumes[0].Secret.SecretName &&
+		expectedDataValue == string(secret.Data[expectedDataKey]) &&
+		expectedImage == pod.Spec.Containers[0].Image
+
+	return Result{
+		TestName:   "Question 13 - Add a secret secret-purple with data singer=prince to the pod purple with image redis:alpine in colors namespace",
+		Passed:     passed,
+		Difficulty: "Medium",
+	}
 }
 
 func renderResultsTable(results []Result) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes", "Result", "Difficulty"})
-
+	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.1.1", "Result", "Difficulty"})
 	table.SetAutoWrapText(false)
 
 	for _, result := range results {
