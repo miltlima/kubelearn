@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mark43
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mark43
+  template:
+    metadata:
+      labels:
+        app: mark43
+    spec:
+      containers:
+      - name: mark43
+        image: nginx:alpine
+        resources: {}
+        ports:
+        - containerPort: 80
