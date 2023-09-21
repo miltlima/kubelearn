@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: mark42
-        image: nginx:alpine
+        image: redis:alpine
         resources: {}
         ports:
-        - containerPort: 80
+        - containerPort: 6379
