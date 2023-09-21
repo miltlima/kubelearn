@@ -45,6 +45,10 @@ make clean
 | 11| Create a network policy `allow-policy-colors` to allow `redmobile-webserver` to access `bluemobile-dbcache` (There objects are created in colors namespace)|
 | 12| Create a secret `secret-colors` with data `color=red` in `colors` namespace|
 | 13| Add a secret `secret-purple` with data `singer=prince` to the pod `purple` with image `redis:alpine` in `colors` namespace|
+| 14| Create a service account `america-sa` in `default` namespace|
+| 15| Add service account `america-sa` to the deployment `mark42`|
+| 16| Change the replica count of the deployment `mark42` to `5`|
+| 17| Create a horizontal pod autoscaler for deployment `mark43` with cpu percent `80`, min replicas `2` and max replicas `8`|
 
 ### Running the following command
 

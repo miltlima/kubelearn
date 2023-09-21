@@ -42,6 +42,10 @@ func main() {
 		createNetPolRule(clientset),
 		createSecret(clientset),
 		createPodAddSecret(clientset),
+		createServiceAccount(clientset),
+		addServiceAccountToDeployment(clientset),
+		changeReplicaCount(clientset),
+		createHpa(clientset),
 	}
 
 	renderResultsTable(results)
@@ -314,6 +318,82 @@ func createPodAddSecret(clientset *kubernetes.Clientset) Result {
 
 	return Result{
 		TestName:   "Question 13 - Add a secret secret-purple with data singer=prince to the pod purple with image redis:alpine in colors namespace",
+		Passed:     passed,
+		Difficulty: "Medium",
+	}
+}
+
+func createServiceAccount(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace          = "default"
+		expectedServiceAccountName = "america-sa"
+	)
+
+	sa, err := clientset.CoreV1().ServiceAccounts(expectedNamespace).Get(context.TODO(), expectedServiceAccountName, metav1.GetOptions{})
+	passed := err == nil &&
+		expectedServiceAccountName == sa.Name
+
+	return Result{
+		TestName:   "Question 14 - Create a service account america-sa in default namespace",
+		Passed:     passed,
+		Difficulty: "Easy",
+	}
+}
+
+func addServiceAccountToDeployment(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace          = "default"
+		expectedDeploymentName     = "mark42"
+		expectedServiceAccountName = "america-sa"
+	)
+
+	deploy, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
+	passed := err == nil &&
+		expectedServiceAccountName == deploy.Spec.Template.Spec.ServiceAccountName
+
+	return Result{
+		TestName:   "Question 15 - Add service account america-sa to the deployment mark42",
+		Passed:     passed,
+		Difficulty: "Easy",
+	}
+}
+
+func changeReplicaCount(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace      = "default"
+		expectedDeploymentName = "mark42"
+		expectedReplicas       = int32(5)
+	)
+
+	deploy, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
+	passed := err == nil &&
+		expectedReplicas == *deploy.Spec.Replicas
+
+	return Result{
+		TestName:   "Question 16 - Change the replica count of the deployment mark42 to 5",
+		Passed:     passed,
+		Difficulty: "Easy",
+	}
+}
+
+func createHpa(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace      = "default"
+		expectedDeploymentName = "mark43"
+		expectedMinReplicas    = int32(2)
+		expectedMaxReplicas    = int32(8)
+		expectedCpuPercent     = int32(80)
+	)
+
+	hpa, err := clientset.AutoscalingV2().HorizontalPodAutoscalers(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
+	passed := err == nil &&
+		expectedDeploymentName == hpa.Spec.ScaleTargetRef.Name &&
+		expectedMinReplicas == *hpa.Spec.MinReplicas &&
+		expectedMaxReplicas == hpa.Spec.MaxReplicas &&
+		expectedCpuPercent == *hpa.Spec.Metrics[0].Resource.Target.AverageUtilization
+
+	return Result{
+		TestName:   "Question 17 - Create a horizontal pod autoscaler hpa-mark43 for deployment mark43 with cpu percent 80, min replicas 2 and max replicas 8",
 		Passed:     passed,
 		Difficulty: "Medium",
 	}
