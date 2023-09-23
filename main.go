@@ -46,7 +46,8 @@ func main() {
 		addServiceAccountToDeployment(clientset),
 		changeReplicaCount(clientset),
 		createHpa(clientset),
-        addSecurityContext(clientset),
+		addSecurityContext(clientset),
+		addLivenessProbe(clientset),
 	}
 
 	renderResultsTable(results)
@@ -56,7 +57,6 @@ type Result struct {
 	TestName   string
 	Passed     bool
 	Difficulty string
-    Score      string
 }
 
 func createPod(clientset *kubernetes.Clientset) Result {
@@ -75,7 +75,6 @@ func createPod(clientset *kubernetes.Clientset) Result {
 		TestName:   "Question 1 - Create a pod nginx name with nginx:alpine image",
 		Passed:     passed,
 		Difficulty: "Easy",
-        Score: "10",
 	}
 }
 
@@ -428,9 +427,44 @@ func addSecurityContext(clientset *kubernetes.Clientset) Result {
 	}
 }
 
+func addLivenessProbe(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace           = "shield"
+		expectedPodName             = "mark50"
+		expectedInitialDelaySeconds = int32(5)
+		expectedPeriodSeconds       = int32(10)
+		expectedLivenessProbeType   = "HttpGet"
+		expectedLivenessProbePath   = "/"
+		expectedLivenessProbePort   = int32(80)
+	)
+
+	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
+
+	if err != nil || len(pod.Spec.Containers) == 0 || pod.Spec.Containers[0].LivenessProbe == nil {
+		return Result{
+			TestName:   "Question 19 - Add a liveness probe to the pod mark50 with initial delay 5s, period 10s and path / in namespace shield",
+			Passed:     false,
+			Difficulty: "Medium",
+		}
+
+	}
+
+	passed := err == nil &&
+		expectedInitialDelaySeconds == pod.Spec.Containers[0].LivenessProbe.InitialDelaySeconds &&
+		expectedPeriodSeconds == pod.Spec.Containers[0].LivenessProbe.PeriodSeconds &&
+		expectedLivenessProbePath == pod.Spec.Containers[0].LivenessProbe.HTTPGet.Path &&
+		expectedLivenessProbePort == pod.Spec.Containers[0].LivenessProbe.HTTPGet.Port.IntVal
+
+	return Result{
+		TestName:   "Question 19 - Add a liveness probe to the pod mark50 with initial delay 5s, period 10s and path / in namespace shield",
+		Passed:     passed,
+		Difficulty: "Medium",
+	}
+}
+
 func renderResultsTable(results []Result) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.1.2", "Result", "Difficulty", "Score"})
+	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.1.2", "Result", "Difficulty"})
 	table.SetAutoWrapText(false)
 
 	for _, result := range results {
@@ -438,7 +472,7 @@ func renderResultsTable(results []Result) {
 		if !result.Passed {
 			passedStr = color.RedString("🆘 Fail")
 		}
-		row := []string{result.TestName, passedStr, result.Difficulty, result.Score}
+		row := []string{result.TestName, passedStr, result.Difficulty}
 		table.Append(row)
 	}
 
