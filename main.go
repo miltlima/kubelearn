@@ -46,6 +46,7 @@ func main() {
 		addServiceAccountToDeployment(clientset),
 		changeReplicaCount(clientset),
 		createHpa(clientset),
+        addSecurityContext(clientset),
 	}
 
 	renderResultsTable(results)
@@ -55,6 +56,7 @@ type Result struct {
 	TestName   string
 	Passed     bool
 	Difficulty string
+    Score      string
 }
 
 func createPod(clientset *kubernetes.Clientset) Result {
@@ -73,6 +75,7 @@ func createPod(clientset *kubernetes.Clientset) Result {
 		TestName:   "Question 1 - Create a pod nginx name with nginx:alpine image",
 		Passed:     passed,
 		Difficulty: "Easy",
+        Score: "10",
 	}
 }
 
@@ -273,7 +276,7 @@ func createNetPolRule(clientset *kubernetes.Clientset) Result {
 	passed := err == nil && hasCorrectIngressRule(netPol.Spec.Ingress)
 
 	return Result{
-		TestName:   "Question 11 - Create a network policy allow-policy-colors with to allow redmobile-webserver to access bluemobile-dbcache (There objects are created in colors namespace)",
+		TestName:   "Question 11 - Create a network policy allow-policy-colors with to allow redmobile-webserver to access bluemobile-dbcache.",
 		Passed:     passed,
 		Difficulty: "Hard",
 	}
@@ -399,9 +402,35 @@ func createHpa(clientset *kubernetes.Clientset) Result {
 	}
 }
 
+func addSecurityContext(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace           = "default"
+		expectedDeploymentName      = "mark42"
+		expectedPrivilegeEscalation = false
+	)
+
+	deploy, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
+	if err != nil {
+		return Result{
+			TestName:   "Question 18 - Prevent privilege escalation in the deployment mark42",
+			Passed:     false,
+			Difficulty: "Medium",
+		}
+	}
+
+	passed := deploy.Spec.Template.Spec.Containers[0].SecurityContext != nil &&
+		*deploy.Spec.Template.Spec.Containers[0].SecurityContext.AllowPrivilegeEscalation == expectedPrivilegeEscalation
+
+	return Result{
+		TestName:   "Question 18 - Prevent privilege escalation in the deployment mark42",
+		Passed:     passed,
+		Difficulty: "Medium",
+	}
+}
+
 func renderResultsTable(results []Result) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.1.2", "Result", "Difficulty"})
+	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.1.2", "Result", "Difficulty", "Score"})
 	table.SetAutoWrapText(false)
 
 	for _, result := range results {
@@ -409,7 +438,7 @@ func renderResultsTable(results []Result) {
 		if !result.Passed {
 			passedStr = color.RedString("🆘 Fail")
 		}
-		row := []string{result.TestName, passedStr, result.Difficulty}
+		row := []string{result.TestName, passedStr, result.Difficulty, result.Score}
 		table.Append(row)
 	}
 
