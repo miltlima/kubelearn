@@ -442,7 +442,7 @@ func addLivenessProbe(clientset *kubernetes.Clientset) Result {
 
 	if err != nil || len(pod.Spec.Containers) == 0 || pod.Spec.Containers[0].LivenessProbe == nil {
 		return Result{
-			TestName:   "Question 19 - Add a liveness probe to the pod mark50 with initial delay 5s, period 10s and path / in namespace shield",
+			TestName:   "Question 19 - Add a liveness probe to the pod mark50 with initial delay 5s, period 10s HttpGet, port 80 and path '/' in namespace shield",
 			Passed:     false,
 			Difficulty: "Medium",
 		}
@@ -456,7 +456,7 @@ func addLivenessProbe(clientset *kubernetes.Clientset) Result {
 		expectedLivenessProbePort == pod.Spec.Containers[0].LivenessProbe.HTTPGet.Port.IntVal
 
 	return Result{
-		TestName:   "Question 19 - Add a liveness probe to the pod mark50 with initial delay 5s, period 10s and path / in namespace shield",
+		TestName:   "Question 19 - Add a liveness probe to the pod mark50 with initial delay 5s, period 10s HttpGet, port 80 and path '/' in namespace shield",
 		Passed:     passed,
 		Difficulty: "Medium",
 	}
