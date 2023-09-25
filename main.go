@@ -46,6 +46,8 @@ func main() {
 		addServiceAccountToDeployment(clientset),
 		changeReplicaCount(clientset),
 		createHpa(clientset),
+		addSecurityContext(clientset),
+		addLivenessProbe(clientset),
 	}
 
 	renderResultsTable(results)
@@ -273,7 +275,7 @@ func createNetPolRule(clientset *kubernetes.Clientset) Result {
 	passed := err == nil && hasCorrectIngressRule(netPol.Spec.Ingress)
 
 	return Result{
-		TestName:   "Question 11 - Create a network policy allow-policy-colors with to allow redmobile-webserver to access bluemobile-dbcache (There objects are created in colors namespace)",
+		TestName:   "Question 11 - Create a network policy allow-policy-colors with to allow redmobile-webserver to access bluemobile-dbcache.",
 		Passed:     passed,
 		Difficulty: "Hard",
 	}
@@ -394,6 +396,67 @@ func createHpa(clientset *kubernetes.Clientset) Result {
 
 	return Result{
 		TestName:   "Question 17 - Create a horizontal pod autoscaler hpa-mark43 for deployment mark43 with cpu percent 80, min replicas 2 and max replicas 8",
+		Passed:     passed,
+		Difficulty: "Medium",
+	}
+}
+
+func addSecurityContext(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace           = "default"
+		expectedDeploymentName      = "mark42"
+		expectedPrivilegeEscalation = false
+	)
+
+	deploy, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
+	if err != nil {
+		return Result{
+			TestName:   "Question 18 - Prevent privilege escalation in the deployment mark42",
+			Passed:     false,
+			Difficulty: "Medium",
+		}
+	}
+
+	passed := deploy.Spec.Template.Spec.Containers[0].SecurityContext != nil &&
+		*deploy.Spec.Template.Spec.Containers[0].SecurityContext.AllowPrivilegeEscalation == expectedPrivilegeEscalation
+
+	return Result{
+		TestName:   "Question 18 - Prevent privilege escalation in the deployment mark42",
+		Passed:     passed,
+		Difficulty: "Medium",
+	}
+}
+
+func addLivenessProbe(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace           = "shield"
+		expectedPodName             = "mark50"
+		expectedInitialDelaySeconds = int32(5)
+		expectedPeriodSeconds       = int32(10)
+		expectedLivenessProbeType   = "HttpGet"
+		expectedLivenessProbePath   = "/"
+		expectedLivenessProbePort   = int32(80)
+	)
+
+	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
+
+	if err != nil || len(pod.Spec.Containers) == 0 || pod.Spec.Containers[0].LivenessProbe == nil {
+		return Result{
+			TestName:   "Question 19 - Add a liveness probe to the pod mark50 with initial delay 5s, period 10s HttpGet, port 80 and path '/' in namespace shield",
+			Passed:     false,
+			Difficulty: "Medium",
+		}
+
+	}
+
+	passed := err == nil &&
+		expectedInitialDelaySeconds == pod.Spec.Containers[0].LivenessProbe.InitialDelaySeconds &&
+		expectedPeriodSeconds == pod.Spec.Containers[0].LivenessProbe.PeriodSeconds &&
+		expectedLivenessProbePath == pod.Spec.Containers[0].LivenessProbe.HTTPGet.Path &&
+		expectedLivenessProbePort == pod.Spec.Containers[0].LivenessProbe.HTTPGet.Port.IntVal
+
+	return Result{
+		TestName:   "Question 19 - Add a liveness probe to the pod mark50 with initial delay 5s, period 10s HttpGet, port 80 and path '/' in namespace shield",
 		Passed:     passed,
 		Difficulty: "Medium",
 	}

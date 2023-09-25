@@ -1,4 +1,6 @@
-# Kubelearn - Learn how to deploy objects in kubernetes
+# Kubelearn
+
+Learn how to deploy objects in kubernetes
 
 ## how to use
 
@@ -49,6 +51,8 @@ make clean
 | 15| Add service account `america-sa` to the deployment `mark42`|
 | 16| Change the replica count of the deployment `mark42` to `5`|
 | 17| Create a horizontal pod autoscaler for deployment `mark43` with cpu percent `80`, min replicas `2` and max replicas `8`|
+| 18| Prevent privilege escalation in the deployment `mark42`|
+| 19| Add a `liveness` probe to the pod `mark50` with initial delay `5s`, period `10s` and path `/` in namespace `shield`|
 
 ### Running the following command
 
