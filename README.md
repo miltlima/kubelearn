@@ -53,6 +53,10 @@ make clean
 | 17| Create a horizontal pod autoscaler for deployment `mark43` with cpu percent `80`, min replicas `2` and max replicas `8`|
 | 18| Prevent privilege escalation in the deployment `mark42`|
 | 19| Add a `liveness` probe to the pod `mark50` with initial delay `5s`, period `10s` and path `/` in namespace `shield`|
+| 20| Create a deployment `yellow-deployment` with `bonovoo/node-app:1.0` image and `2` replicas|
+| 21| Create a service `yellow-service` for the deployment `yellow-deployment` in namespace `colors` with port `80` and target port `3000`|
+| 22| Create an ingress `ingress-colors` with host `yellow.com`, path `/yellow` and service `yellow-service` in namespace `colors`|
+| 23| Create a role `role-one` with verbs `get, list, watch` in namespace `default`|  
 
 ### Running the following command
 
