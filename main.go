@@ -48,6 +48,9 @@ func main() {
 		createHpa(clientset),
 		addSecurityContext(clientset),
 		addLivenessProbe(clientset),
+		createDeploymentYellow(clientset),
+		createServiceForYellow(clientset),
+		createIngressYellow(clientset),
 	}
 
 	renderResultsTable(results)
@@ -67,6 +70,15 @@ func createPod(clientset *kubernetes.Clientset) Result {
 	)
 
 	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
+
+	if err != nil {
+		return Result{
+			TestName:   "Question 1 - Create a pod nginx name with nginx:alpine image",
+			Passed:     false,
+			Difficulty: "Easy",
+		}
+	}
+
 	passed := err == nil &&
 		pod.Spec.Containers[0].Image == expectedImage &&
 		pod.Name == expectedPodName
@@ -110,7 +122,9 @@ func createDeploymentAndService(clientset *kubernetes.Clientset) Result {
 
 	deployment, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
 	service, err := clientset.CoreV1().Services(expectedNamespace).Get(context.TODO(), expectedServiceName, metav1.GetOptions{})
+
 	passed := err == nil &&
+		service != nil &&
 		expectedDeploymentName == deployment.Name &&
 		expectedServiceName == service.Name &&
 		expectedServicePort == service.Spec.Ports[0].Port &&
@@ -129,6 +143,7 @@ func createNamespace(clientset *kubernetes.Clientset) Result {
 	)
 
 	namespace, err := clientset.CoreV1().Namespaces().Get(context.TODO(), expectedNamespace, metav1.GetOptions{})
+
 	passed := err == nil &&
 		expectedNamespace == namespace.Name
 
@@ -313,6 +328,7 @@ func createPodAddSecret(clientset *kubernetes.Clientset) Result {
 
 	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
 	secret, err := clientset.CoreV1().Secrets(expectedNamespace).Get(context.TODO(), expectedSecretName, metav1.GetOptions{})
+
 	passed := err == nil &&
 		expectedSecretName == pod.Spec.Volumes[0].Secret.SecretName &&
 		expectedDataValue == string(secret.Data[expectedDataKey]) &&
@@ -388,6 +404,7 @@ func createHpa(clientset *kubernetes.Clientset) Result {
 	)
 
 	hpa, err := clientset.AutoscalingV2().HorizontalPodAutoscalers(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
+
 	passed := err == nil &&
 		expectedDeploymentName == hpa.Spec.ScaleTargetRef.Name &&
 		expectedMinReplicas == *hpa.Spec.MinReplicas &&
@@ -446,7 +463,6 @@ func addLivenessProbe(clientset *kubernetes.Clientset) Result {
 			Passed:     false,
 			Difficulty: "Medium",
 		}
-
 	}
 
 	passed := err == nil &&
@@ -461,6 +477,92 @@ func addLivenessProbe(clientset *kubernetes.Clientset) Result {
 		Difficulty: "Medium",
 	}
 }
+
+func createDeploymentYellow(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace = "colors"
+		expectedName      = "yellow-deployment"
+		expectedReplicas  = int32(2)
+		expectedImage     = "bonovoo/node-app:1.0"
+	)
+
+	deployment, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedName, metav1.GetOptions{})
+	passed := err == nil &&
+		expectedImage == deployment.Spec.Template.Spec.Containers[0].Image &&
+		expectedReplicas == *deployment.Spec.Replicas
+
+	return Result{
+		TestName:   "Question 20 - Create a deployment yellow-deployment with bonovoo/node-app:1.0 image and 2 replicas",
+		Passed:     passed,
+		Difficulty: "Easy",
+	}
+}
+
+func createServiceForYellow(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace    = "colors"
+		expectedServiceName  = "yellow-service"
+		expectedTargetObject = "yellow-deployment"
+		expectedPort         = int32(80)
+		expectedTargetPort   = int32(3000)
+		expectedProtocol     = "TCP"
+	)
+
+	service, err := clientset.CoreV1().Services(expectedNamespace).Get(context.TODO(), expectedServiceName, metav1.GetOptions{})
+	passed := err == nil &&
+		expectedTargetObject == service.Spec.Selector["yellow-app"] &&
+		expectedPort == service.Spec.Ports[0].Port &&
+		expectedTargetPort == service.Spec.Ports[0].TargetPort.IntVal &&
+		expectedProtocol == service.Spec.Ports[0].Protocol
+
+	return Result{
+		TestName:   "Question 21 - H",
+		Passed:     passed,
+		Difficulty: "Hard",
+	}
+}
+
+func createIngressYellow(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace = "colors"
+		expectedName      = "ingress-colors"
+		expectedHost      = "yellow.com"
+		expectedPath      = "/yellow"
+		expectedService   = "yellow-service"
+	)
+
+	ingress, err := clientset.NetworkingV1().Ingresses(expectedNamespace).Get(context.TODO(), expectedName, metav1.GetOptions{})
+	if err != nil {
+		return Result{
+			TestName:   "Question 22 - Create an ingress ingress-colors with host yellow.com, path /yellow and service yellow-service in namespace colors",
+			Passed:     false,
+			Difficulty: "Hard",
+		}
+	}
+
+	ingressSpec := &ingress.Spec
+	rules := ingressSpec.Rules
+
+	passed := len(rules) > 0 &&
+		expectedHost == rules[0].Host &&
+		len(rules[0].HTTP.Paths) > 0 &&
+		expectedPath == rules[0].HTTP.Paths[0].Path &&
+		expectedService == rules[0].HTTP.Paths[0].Backend.Service.Name
+
+	return Result{
+		TestName:   "Question 22 - Create an ingress ingress-colors with host yellow.com, path /yellow and service yellow-service in namespace colors",
+		Passed:     passed,
+		Difficulty: "Hard",
+	}
+}
+
+// func createRoleOne(clientset *kubernetes.Clientset) Result {
+// 	const (
+// 		expectedName      = "role-one"
+// 		expectedNamespace = "default"
+// 		expectedVerbs     = []string{"get", "list", "watch"}
+// 	)
+// }
 
 func renderResultsTable(results []Result) {
 	table := tablewriter.NewWriter(os.Stdout)
