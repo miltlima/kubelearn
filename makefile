@@ -1,4 +1,22 @@
 # Makefile to install YAML manifests and install kind optionally
+help:
+	@echo "Makefile Help"
+	@echo ""
+	@echo "Targets:"
+	@echo "  all          Installs all YAML manifests."
+	@echo "  clean        Deletes all installed resources."
+	@echo "  check-syntax Checks the syntax of all manifests without actually installing them."
+	@echo "  init         Initializes the Terraform repository."
+	@echo "  apply        Applies Terraform configurations."
+	@echo "  destroy      Destroys Terraform resources."
+	@echo ""
+	@echo "Usage:"
+	@echo "  make all"
+	@echo "  make clean"
+	@echo "  make check-syntax"
+	@echo "  make init"
+	@echo "  make apply"
+	@echo "  make destroy"
 
 # Directory where the YAML manifests are located
 MANIFESTS_DIR := manifests
@@ -57,3 +75,4 @@ apply: ## Apply Terraform configurations
 destroy: ## Destroy Terraform resources
 	@echo "Destroying Terraform resources..."
 	$(TERRAFORM_DESTROY)
+

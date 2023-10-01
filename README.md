@@ -1,36 +1,76 @@
 # Kubelearn
 
-Learn how to deploy objects in kubernetes
+Practice you kubernetes knowledge
+
+Requirements:
+
+- Golang 1.21
+- Terraform 1.5
 
 ## how to use
 
-clone the repository
+**Clone the repository**
 
 ```bash
 git clone git@github.com:miltlima/kubelearn.git
 ```
 
-Enter inside folder kubelearn
+**Enter inside folder kubelearn**
 
 ```bash
 cd kubelearn
 ```
 
-Prepare environment ( this will create kubernetes objects needed for some questions)
+## Optionally you can install kind using make ( requires Docker)
 
-```bash
-make all 
+**Initialize Terraform repository**:
+
+```sh
+make init
 ```
 
-For remove kubernetes objects use the following command
+**Apply Terraform configurations**:
 
-```bash
+```sh
+make apply
+```
+
+**Destroy Terraform resources**
+
+```sh
+make destroy
+```
+
+## You can also use `make help` for list available commands
+
+- `all`: Installs all YAML manifests.
+- `clean`: Deletes all installed resources.
+- `check-syntax`: Checks the syntax of all manifests without actually installing them.
+- `init`: Initializes the Terraform repository.
+- `apply`: Applies Terraform configurations.
+- `destroy`: Destroys Terraform resources.
+
+## Prepare environment ( this will create kubernetes objects needed for some questions)
+
+**Install YAML manifests**:
+
+```sh
+make all
+```
+
+**Clean up installed resources**:
+
+```sh
 make clean
 ```
 
-## Answer the questions below
+**Check manifest syntax**:
 
-### Questions
+```sh
+make check-syntax
+```
+
+## Answer the questions below
 
 | Questions   | Description |
 | ----------- | ----------- |
@@ -58,12 +98,12 @@ make clean
 | 22| Create an ingress `ingress-colors` with host `yellow.com`, path `/yellow` and service `yellow-service` in namespace `colors`|
 | 23| Create a role `role-one` with verbs `get, list, watch` in namespace `default`|  
 
-### Running the following command
+## Running the following command
 
 ```bash
 go run main.go
 ```
 
-### This will show the table above
+## This will show the table above
 
 ![Kubelearn](images/kubelearn.png)
