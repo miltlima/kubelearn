@@ -1,4 +1,4 @@
-# Makefile to install YAML manifests
+# Makefile to install YAML manifests and install kind optionally
 
 # Directory where the YAML manifests are located
 MANIFESTS_DIR := manifests
@@ -31,3 +31,29 @@ check-syntax:
 	for file in $(YAML_FILES); do \
 		kubectl apply --dry-run=client -f $$file; \
 	done
+
+# Directory where the Terraform code is
+TERRAFORM_DIR := config
+
+# Commands
+TERRAFORM := terraform
+TERRAFORM_CMD := $(TERRAFORM) -chdir=$(TERRAFORM_DIR)
+TERRAFORM_INIT := $(TERRAFORM_CMD) init
+TERRAFORM_APPLY := $(TERRAFORM_CMD) apply -auto-approve
+TERRAFORM_DESTROY := $(TERRAFORM_CMD) destroy -auto-approve
+
+# Targets
+.PHONY: init apply destroy
+
+# Rules
+init: ## Initialize Terraform repository
+	@echo "Initializing Terraform..."
+	$(TERRAFORM_INIT)
+
+apply: ## Apply Terraform configurations
+	@echo "Applying Terraform configurations..."
+	$(TERRAFORM_APPLY)
+
+destroy: ## Destroy Terraform resources
+	@echo "Destroying Terraform resources..."
+	$(TERRAFORM_DESTROY)
