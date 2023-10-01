@@ -2,8 +2,9 @@
 
 Practice you kubernetes knowledge
 
-Requirements: 
--  Golang 1.21 
+Requirements:
+
+- Golang 1.21
 - Terraform 1.5
 
 ## how to use
