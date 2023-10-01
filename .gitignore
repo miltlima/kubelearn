@@ -22,3 +22,9 @@ go.work
 .vscode
 *.log
 dist/
+
+# Terraform workspace files
+*.hcl
+*.tfstate
+*.backup
+.terraform/
