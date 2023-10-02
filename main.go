@@ -110,7 +110,7 @@ func createDeployment(clientset *kubernetes.Clientset) Result {
 		expectedNamespace      = "default"
 		expectedDeploymentName = "nginx-deployment"
 		expectedReplicas       = int32(4)
-		expectedImage          = "nginx:1.17"
+		expectedImage          = "nginx:alpine"
 	)
 
 	deployment, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
@@ -149,7 +149,7 @@ func createDeploymentAndService(clientset *kubernetes.Clientset) Result {
 
 	if err != nil {
 		return Result{
-			TestName:   "Question 3 - Create a deployment redis name with redis:alpine image and a service with port 6379 in namespace latam",
+			TestName:   "Question 3 - Create a deployment redis name with redis:alpine image and a service with name redis-service and port 6379 in namespace latam",
 			Passed:     false,
 			Difficulty: "Hard",
 		}
@@ -163,7 +163,7 @@ func createDeploymentAndService(clientset *kubernetes.Clientset) Result {
 		expectedImage == deployment.Spec.Template.Spec.Containers[0].Image
 
 	return Result{
-		TestName:   "Question 3 - Create a deployment redis name with redis:alpine image and a service with port 6379 in namespace latam",
+		TestName:   "Question 3 - Create a deployment redis name with redis:alpine image and a service with name redis-service and port 6379 in namespace latam",
 		Passed:     passed,
 		Difficulty: "Hard",
 	}
@@ -171,7 +171,7 @@ func createDeploymentAndService(clientset *kubernetes.Clientset) Result {
 
 func createNamespace(clientset *kubernetes.Clientset) Result {
 	const (
-		expectedNamespace = "emea"
+		expectedNamespace = "europe"
 	)
 
 	namespace, err := clientset.CoreV1().Namespaces().Get(context.TODO(), expectedNamespace, metav1.GetOptions{})
