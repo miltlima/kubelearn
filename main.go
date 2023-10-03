@@ -384,7 +384,7 @@ func createNetPolRule(clientset *kubernetes.Clientset) Result {
 
 	if err != nil {
 		return Result{
-			TestName:   "Question 11 - Create a network policy allow-policy-colors with to allow redmobile-webserver to access bluemobile-dbcache.",
+			TestName:   "Question 11 - Create a network policy allow-policy-colors to allow redmobile-webserver to access bluemobile-dbcache.",
 			Passed:     false,
 			Difficulty: "Hard",
 		}
@@ -393,7 +393,7 @@ func createNetPolRule(clientset *kubernetes.Clientset) Result {
 	passed := err == nil && hasCorrectIngressRule(netPol.Spec.Ingress)
 
 	return Result{
-		TestName:   "Question 11 - Create a network policy allow-policy-colors with to allow redmobile-webserver to access bluemobile-dbcache.",
+		TestName:   "Question 11 - Create a network policy allow-policy-colors to allow redmobile-webserver to access bluemobile-dbcache.",
 		Passed:     passed,
 		Difficulty: "Hard",
 	}
