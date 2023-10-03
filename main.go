@@ -646,7 +646,7 @@ func createDeploymentYellow(clientset *kubernetes.Clientset) Result {
 
 	if err != nil {
 		return Result{
-			TestName:   "Question 20 - Create a deployment yellow-deployment with bonovoo/node-app:1.0 image and 2 replicas",
+			TestName:   "Question 20 - Create a deployment yellow-deployment with bonovoo/node-app:1.0 image and 2 replicas in namespace colors",
 			Passed:     false,
 			Difficulty: "Easy",
 		}
@@ -657,7 +657,7 @@ func createDeploymentYellow(clientset *kubernetes.Clientset) Result {
 		expectedReplicas == *deployment.Spec.Replicas
 
 	return Result{
-		TestName:   "Question 20 - Create a deployment yellow-deployment with bonovoo/node-app:1.0 image and 2 replicas",
+		TestName:   "Question 20 - Create a deployment yellow-deployment with bonovoo/node-app:1.0 image and 2 replicas in namespace colors",
 		Passed:     passed,
 		Difficulty: "Easy",
 	}
