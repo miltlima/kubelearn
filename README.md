@@ -77,7 +77,7 @@ make check-syntax
 | 1 | Create a new pod called `nginx` with `nginx:alpine` image in `default` namespace.|
 | 2 | Create a new deployment called `nginx-deployment` with `nginx:alpine` image and `4 replicas` in default namespace.|
 | 3 | Create a new deployment called `redis` with image `redis:alpine` in `latam` namespace, and create a service called `redis-service` with port `6379` in same namespace.|
-| 4 | Create a namespace called `emea`|
+| 4 | Create a namespace called `europe`|
 | 5 | Create a configmap `europe-configmap` with data `France=Paris`|
 | 6 | Create a pod `thsoot` with label `country=china`, `amazon/amazon-ecs-network-sidecar:latest` image and namespace `asia`|
 | 7 | Create a persistent volume `unicorn-pv` with capacity `1Gi` and access mode `ReadWriteMany` and host path `/tmp/data`|
