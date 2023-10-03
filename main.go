@@ -667,10 +667,9 @@ func createServiceForYellow(clientset *kubernetes.Clientset) Result {
 	const (
 		expectedNamespace    = "colors"
 		expectedServiceName  = "yellow-service"
-		expectedTargetObject = "yellow-deployment"
-		expectedPort         = int32(80)
+		expectedPort         = 80
 		expectedTargetPort   = int32(3000)
-		expectedProtocol     = "TCP"
+		expectedTargetObject = "yellow-deployment"
 	)
 
 	service, err := clientset.CoreV1().Services(expectedNamespace).Get(context.TODO(), expectedServiceName, metav1.GetOptions{})
@@ -684,10 +683,15 @@ func createServiceForYellow(clientset *kubernetes.Clientset) Result {
 	}
 
 	passed := err == nil &&
-		expectedTargetObject == service.Spec.Selector["yellow-app"] &&
 		expectedPort == service.Spec.Ports[0].Port &&
-		expectedTargetPort == service.Spec.Ports[0].TargetPort.IntVal &&
-		expectedProtocol == service.Spec.Ports[0].Protocol
+		expectedTargetPort == service.Spec.Ports[0].TargetPort.IntVal
+
+	for key, value := range service.Spec.Selector {
+		if key == "app" && value == "yellow-deployment" {
+			passed = true
+			break
+		}
+	}
 
 	return Result{
 		TestName:   "Question 21 - Create a service yellow-service for the deployment yellow-deployment in namespace colors with port 80 and target port 3000",
@@ -733,8 +737,9 @@ func createIngressYellow(clientset *kubernetes.Clientset) Result {
 
 func createRoleOne(clientset *kubernetes.Clientset) Result {
 	const (
-		expectedName      = "role-one"
-		expectedNamespace = "default"
+		expectedName      = "apple-one"
+		expectedNamespace = "fruits"
+		expectedResource  = "pods"
 	)
 
 	expectedVerbs := []string{"get", "list", "watch"}
@@ -743,13 +748,15 @@ func createRoleOne(clientset *kubernetes.Clientset) Result {
 
 	if err != nil {
 		return Result{
-			TestName:   "Question 23 - Create a role role-one with verbs get, list, watch in namespace default",
+			TestName:   "Question 23 - Create a role apple-one with verbs get, list, watch in namespace fruits",
 			Passed:     false,
 			Difficulty: "Medium",
 		}
 	}
 
-	passed := true
+	passed := err == nil &&
+		expectedResource == role.Rules[0].Resources[0]
+
 	for _, verb := range expectedVerbs {
 		if !contains(role.Rules[0].Verbs, verb) {
 			passed = false
@@ -758,7 +765,7 @@ func createRoleOne(clientset *kubernetes.Clientset) Result {
 	}
 
 	return Result{
-		TestName:   "Question 23 - Create a role role-one with verbs get, list, watch in namespace default",
+		TestName:   "Question 23 - Create a role apple-one with verbs get, list, watch in namespace fruits",
 		Passed:     passed,
 		Difficulty: "Medium",
 	}
@@ -767,7 +774,7 @@ func createRoleOne(clientset *kubernetes.Clientset) Result {
 // render table of results
 func renderResultsTable(results []Result) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.1.4", "Result", "Difficulty"})
+	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.1.6", "Result", "Difficulty"})
 	table.SetAutoWrapText(false)
 
 	for _, result := range results {
