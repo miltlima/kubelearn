@@ -74,10 +74,10 @@ make check-syntax
 
 | Questions   | Description |
 | ----------- | ----------- |
-| 1 | Create a new pod called `nginx` with `nginx:alpine` image in default namespace.|
-| 2 | Create a new deployment called `nginx-deployment` with `nginx:1.17` image and `4 replicas` in default namespace.|
+| 1 | Create a new pod called `nginx` with `nginx:alpine` image in `default` namespace.|
+| 2 | Create a new deployment called `nginx-deployment` with `nginx:alpine` image and `4 replicas` in default namespace.|
 | 3 | Create a new deployment called `redis` with image `redis:alpine` in `latam` namespace, and create a service called `redis-service` with port `6379` in same namespace.|
-| 4 | Create a namespace called `emea`|
+| 4 | Create a namespace called `europe`|
 | 5 | Create a configmap `europe-configmap` with data `France=Paris`|
 | 6 | Create a pod `thsoot` with label `country=china`, `amazon/amazon-ecs-network-sidecar:latest` image and namespace `asia`|
 | 7 | Create a persistent volume `unicorn-pv` with capacity `1Gi` and access mode `ReadWriteMany` and host path `/tmp/data`|
@@ -93,7 +93,7 @@ make check-syntax
 | 17| Create a horizontal pod autoscaler for deployment `mark43` with cpu percent `80`, min replicas `2` and max replicas `8`|
 | 18| Prevent privilege escalation in the deployment `mark42`|
 | 19| Add a `liveness` probe to the pod `mark50` with initial delay `5s`, period `10s` and path `/` in namespace `shield`|
-| 20| Create a deployment `yellow-deployment` with `bonovoo/node-app:1.0` image and `2` replicas|
+| 20| Create a deployment `yellow-deployment` with `bonovoo/node-app:1.0` image and `2` replicas in namespace `colors`|
 | 21| Create a service `yellow-service` for the deployment `yellow-deployment` in namespace `colors` with port `80` and target port `3000`|
 | 22| Create an ingress `ingress-colors` with host `yellow.com`, path `/yellow` and service `yellow-service` in namespace `colors`|
 | 23| Create a role `role-one` with verbs `get, list, watch` in namespace `default`|  
