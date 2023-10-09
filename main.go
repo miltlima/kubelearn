@@ -66,6 +66,8 @@ func main() {
 		createServiceForYellow(clientset),
 		createIngressYellow(clientset),
 		createRoleOne(clientset),
+		createJob(clientset),
+		createCronjob(clientset),
 	}
 
 	renderResultsTable(results)
@@ -771,10 +773,80 @@ func createRoleOne(clientset *kubernetes.Clientset) Result {
 	}
 }
 
+func createJob(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace             = "default"
+		expectedJobName               = "job-gain"
+		expectedImage                 = "busybox:1.28"
+		expectedParallelism           = int32(2)
+		expectedCompletions           = int32(4)
+		expectedBackoffLimit          = int32(3)
+		expectedActiveDeadlineSeconds = int64(40)
+	)
+
+	job, err := clientset.BatchV1().Jobs(expectedNamespace).Get(context.TODO(), expectedJobName, metav1.GetOptions{})
+
+	if err != nil {
+		return Result{
+			TestName:   "Question 24 - Create a job job-gain with parallelism 2, completions 4, backoffLimit 3 and deadlineSeconds 40",
+			Passed:     false,
+			Difficulty: "Medium",
+		}
+	}
+
+	passed := err == nil &&
+		expectedParallelism == *job.Spec.Parallelism &&
+		expectedCompletions == *job.Spec.Completions &&
+		expectedBackoffLimit == *job.Spec.BackoffLimit &&
+		expectedActiveDeadlineSeconds == *job.Spec.ActiveDeadlineSeconds
+
+	return Result{
+		TestName:   "Question 24 - Create a job job-gain with parallelism 2, completions 4, backoffLimit 3 and deadlineSeconds 40",
+		Passed:     passed,
+		Difficulty: "Medium",
+	}
+}
+
+func createCronjob(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedScheduleTime  = "*/5 * * * *"
+		expectedName          = "cronjob-gain"
+		expectedJobName       = "job-gain"
+		expectedNamespace     = "default"
+		expectedImageName     = "busybox:1.28"
+		expectedCommand       = "sleep 3600"
+		expectedRestartPolicy = "Never"
+	)
+
+	cronjob, err := clientset.BatchV1().CronJobs(expectedNamespace).Get(context.TODO(), expectedName, metav1.GetOptions{})
+
+	if err != nil {
+		return Result{
+			TestName:   "Question 25 - Create a cronjob echo run a each 5 minutes with image busybox:1.28, command 'sleep 3600' and restartPolicy Never",
+			Passed:     false,
+			Difficulty: "Medium",
+		}
+	}
+
+	passed := err == nil &&
+		expectedScheduleTime == cronjob.Spec.Schedule &&
+		expectedName == cronjob.Name &&
+		expectedJobName == cronjob.Spec.JobTemplate.Name &&
+		expectedImageName == cronjob.Spec.JobTemplate.Spec.Template.Spec.Containers[0].Image &&
+		expectedCommand == cronjob.Spec.JobTemplate.Spec.Template.Spec.Containers[0].Command[0] &&
+		expectedRestartPolicy == cronjob.Spec.JobTemplate.Spec.Template.Spec.RestartPolicy
+
+	return Result{
+		TestName:   "Question 25 - Create a cronjob echo run a each 5 minutes with image busybox:1.28, command 'sleep 3600' and restartPolicy Never",
+		Passed:     passed,
+		Difficulty: "Medium",
+	}
+}
+
 // render table of results
 func renderResultsTable(results []Result) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.1.6", "Result", "Difficulty"})
+	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.1.7", "Result", "Difficulty"})
 	table.SetAutoWrapText(false)
 
 	for _, result := range results {

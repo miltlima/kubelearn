@@ -96,7 +96,9 @@ make check-syntax
 | 20| Create a deployment `yellow-deployment` with `bonovoo/node-app:1.0` image and `2` replicas in namespace `colors`|
 | 21| Create a service `yellow-service` for the deployment `yellow-deployment` in namespace `colors` with port `80` and target port `3000`|
 | 22| Create an ingress `ingress-colors` with host `yellow.com`, path `/yellow` and service `yellow-service` in namespace `colors`|
-| 23| Create a role `role-one` with verbs `get, list, watch` in namespace `default`|  
+| 23| Create a role `apple-one` with verbs `get, list, watch` in namespace `fruits`|
+| 24| Create a job `job-gain` with parallelism `2`, completions `4`, backoffLimit `3` and deadlineSeconds `40`|
+| 25| Create a cronjob `cronjob-gain` run a each `5` minutes with image `busybox:1.28`, command `'sleep 3600'` and restartPolicy `Never`|
 
 ## Running the following command
 
