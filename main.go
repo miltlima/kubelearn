@@ -68,6 +68,7 @@ func main() {
 		createRoleOne(clientset),
 		createJob(clientset),
 		createCronjob(clientset),
+		createStateFulSet(clientset),
 	}
 
 	renderResultsTable(results)
@@ -843,10 +844,42 @@ func createCronjob(clientset *kubernetes.Clientset) Result {
 	}
 }
 
+func createStateFulSet(clientset *kubernetes.Clientset) Result {
+	const (
+		expectedNamespace = "default"
+		expectedName      = "statefulset-gain"
+		expectedImage     = "busybox:1.28"
+		expectedCommand   = "sleep 3600"
+		expectedReplicas  = int32(3)
+	)
+
+	statefulset, err := clientset.AppsV1().StatefulSets(expectedNamespace).Get(context.TODO(), expectedName, metav1.GetOptions{})
+
+	if err != nil {
+		return Result{
+			TestName:   "Question 26 - Create a statefulset statefulset-gain with image busybox:1.28, command 'sleep 3600' and replicas 3",
+			Passed:     false,
+			Difficulty: "Medium",
+		}
+	}
+
+	passed := err == nil &&
+		expectedName == statefulset.Name &&
+		expectedImage == statefulset.Spec.Template.Spec.Containers[0].Image &&
+		expectedCommand == statefulset.Spec.Template.Spec.Containers[0].Command[0] &&
+		expectedReplicas == statefulset.Status.ReadyReplicas
+
+	return Result{
+		TestName:   "Question 26 - Create a statefulset statefulset-gain with image busybox:1.28, command 'sleep 3600' and replicas 3",
+		Passed:     passed,
+		Difficulty: "Medium",
+	}
+}
+
 // render table of results
 func renderResultsTable(results []Result) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.1.7", "Result", "Difficulty"})
+	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.1.8", "Result", "Difficulty"})
 	table.SetAutoWrapText(false)
 
 	for _, result := range results {
