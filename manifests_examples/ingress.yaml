@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-colors
+  namespace: colors
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx-example
+  rules:
+  - host: "yellow.com"
+    http:
+      paths:
+      - path: /yellow
+        pathType: Prefix
+        backend:
+          service:
+            name: yellow-service
+            port:
+              number: 80

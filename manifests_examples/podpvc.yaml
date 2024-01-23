@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webserver
+  namespace: public
+spec:
+  volumes:
+    - name: unicorn-pv
+      persistentVolumeClaim:
+        claimName: unicorn-pvc
+  containers:
+    - name: task-pv-container
+      image: nginx:alpine
+      ports:
+        - containerPort: 80
+          name: "webserver"
+      volumeMounts:
+        - mountPath: "/usr/share/nginx/html"
+          name: unicorn-pv

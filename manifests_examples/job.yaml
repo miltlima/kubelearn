@@ -1,0 +1,17 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-gain
+spec:
+  parallelism: 2
+  completions: 4
+  backoffLimit: 3
+  activeDeadlineSeconds: 40
+  template:
+    metadata:
+    spec:
+      containers:
+      - image: busybox:1.28
+        name: job-gain
+        resources: {}
+      restartPolicy: Never

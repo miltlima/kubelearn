@@ -1,0 +1,20 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-gain
+spec:
+  jobTemplate:
+    metadata:
+      name: job-gain
+    spec:
+      template:
+        metadata:
+        spec:
+          containers:
+          - image: busybox:1.28
+            name: cronjob-gain
+            command: ["sleep 3600"]
+            resources: {}
+          restartPolicy: Never
+  schedule: '*/5 * * * *'
+status: {}

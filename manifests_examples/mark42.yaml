@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "2"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"name":"mark42","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"mark42"}},"template":{"metadata":{"labels":{"app":"mark42"}},"spec":{"containers":[{"image":"redis:alpine","name":"mark42","ports":[{"containerPort":6379}],"resources":{}}]}}}}
+  creationTimestamp: "2023-10-02T22:55:47Z"
+  generation: 3
+  name: mark42
+  namespace: default
+  resourceVersion: "7901"
+  uid: cf061d31-d577-4caf-8ee2-0287c9d3bb60
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 5
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: mark42
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: mark42
+    spec:
+      containers:
+      - image: redis:alpine
+        imagePullPolicy: IfNotPresent
+        name: mark42
+        ports:
+        - containerPort: 6379
+          protocol: TCP
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        securityContext:
+          allowPrivilegeEscalation: false
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: america-sa
+      serviceAccountName: america-sa
+      terminationGracePeriodSeconds: 30
+status:
+  availableReplicas: 5
+  conditions:
+  - lastTransitionTime: "2023-10-02T22:55:47Z"
+    lastUpdateTime: "2023-10-03T00:12:45Z"
+    message: ReplicaSet "mark42-857f59fdd5" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  - lastTransitionTime: "2023-10-03T00:13:31Z"
+    lastUpdateTime: "2023-10-03T00:13:31Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  observedGeneration: 3
+  readyReplicas: 5
+  replicas: 5
+  updatedReplicas: 5
