@@ -75,4 +75,3 @@ apply: ## Apply Terraform configurations
 destroy: ## Destroy Terraform resources
 	@echo "Destroying Terraform resources..."
 	$(TERRAFORM_DESTROY)
-
