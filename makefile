@@ -56,12 +56,12 @@ TERRAFORM_DIR := config
 # Commands
 TERRAFORM := terraform
 TERRAFORM_CMD := $(TERRAFORM) -chdir=$(TERRAFORM_DIR)
-TERRAFORM_INIT := $(TERRAFORM_CMD) init
+TERRAFORM_INIT := $(TERRAFORM_CMD) init  
 TERRAFORM_APPLY := $(TERRAFORM_CMD) apply -auto-approve
 TERRAFORM_DESTROY := $(TERRAFORM_CMD) destroy -auto-approve
 
 # Targets
-.PHONY: init apply destroy
+.PHONY: init apply destroy init-upgrade
 
 # Rules
 init: ## Initialize Terraform repository
@@ -75,4 +75,3 @@ apply: ## Apply Terraform configurations
 destroy: ## Destroy Terraform resources
 	@echo "Destroying Terraform resources..."
 	$(TERRAFORM_DESTROY)
-

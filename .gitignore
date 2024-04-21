@@ -28,3 +28,7 @@ dist/
 *.tfstate
 *.backup
 .terraform/
+*-config
+
+# Mac OS X
+.DS_Store
