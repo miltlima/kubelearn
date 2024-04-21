@@ -1,5 +1,5 @@
 resource "kind_cluster" "default" {
-  name           = "kubelearn-cluster"
+  name           = "kubelearn"
   wait_for_ready = true
   node_image     = "kindest/node:v1.27.1"
   kind_config {
