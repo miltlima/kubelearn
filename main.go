@@ -89,14 +89,6 @@ func createPod(clientset *kubernetes.Clientset) Result {
 
 	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 1 - Create a pod nginx name with nginx:alpine image",
-			Passed:     false,
-			Difficulty: "Easy",
-		}
-	}
-
 	passed := err == nil &&
 		pod.Spec.Containers[0].Image == expectedImage &&
 		pod.Name == expectedPodName
@@ -117,14 +109,6 @@ func createDeployment(clientset *kubernetes.Clientset) Result {
 	)
 
 	deployment, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
-
-	if err != nil {
-		return Result{
-			TestName:   "Question 2 - Create a deployment nginx-deployment with nginx:alpine image and 4 replicas",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
 
 	passed := err == nil &&
 		expectedDeploymentName == deployment.Name &&
@@ -150,14 +134,6 @@ func createDeploymentAndService(clientset *kubernetes.Clientset) Result {
 	deployment, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
 	service, err := clientset.CoreV1().Services(expectedNamespace).Get(context.TODO(), expectedServiceName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 3 - Create a deployment redis name with redis:alpine image and a service with name redis-service and port 6379 in namespace latam",
-			Passed:     false,
-			Difficulty: "Hard",
-		}
-	}
-
 	passed := err == nil &&
 		service != nil &&
 		expectedDeploymentName == deployment.Name &&
@@ -179,14 +155,6 @@ func createNamespace(clientset *kubernetes.Clientset) Result {
 
 	namespace, err := clientset.CoreV1().Namespaces().Get(context.TODO(), expectedNamespace, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 4 - Create a namespace europe",
-			Passed:     false,
-			Difficulty: "Easy",
-		}
-	}
-
 	passed := err == nil &&
 		expectedNamespace == namespace.Name
 
@@ -206,14 +174,6 @@ func createConfigMap(clientset *kubernetes.Clientset) Result {
 	)
 
 	configMap, err := clientset.CoreV1().ConfigMaps(expectedNamespace).Get(context.TODO(), expectedConfigMapName, metav1.GetOptions{})
-
-	if err != nil {
-		return Result{
-			TestName:   "Question 5 - Create a configmap europe-configmap with data France=Paris",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
 
 	passed := err == nil &&
 		expectedConfigMapName == configMap.Name &&
@@ -237,14 +197,6 @@ func createLabel(clientset *kubernetes.Clientset) Result {
 
 	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 6 - Create a pod thsoot with label country=china with amazon/amazon-ecs-network-sidecar:latest image and namespace asia",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
-
 	passed := err == nil &&
 		expectedImage == pod.Spec.Containers[0].Image &&
 		expectedLabelValue == pod.ObjectMeta.Labels[expectedLabelKey]
@@ -265,14 +217,6 @@ func createPersistentVolume(clientset *kubernetes.Clientset) Result {
 	)
 
 	pv, err := clientset.CoreV1().PersistentVolumes().Get(context.TODO(), expectedPersistentVolumeName, metav1.GetOptions{})
-
-	if err != nil {
-		return Result{
-			TestName:   "Question 7 - Create a persistent volume unicorn-pv with capacity 1Gi and access mode ReadWriteMany and host path /tmp/data",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
 
 	passed := err == nil &&
 		expectedCapacity == pv.Spec.Capacity.Storage().String() &&
@@ -295,14 +239,6 @@ func createPersistentVolumeClaim(clientset *kubernetes.Clientset) Result {
 	)
 
 	pvc, err := clientset.CoreV1().PersistentVolumeClaims(expectedNamespace).Get(context.TODO(), expectedPersistentVolumeClaimName, metav1.GetOptions{})
-
-	if err != nil {
-		return Result{
-			TestName:   "Question 8 - Create a persistent volume claim unicorn-pvc with capacity 400Mi and access mode ReadWriteMany",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
 
 	passed := err == nil &&
 		expectedCapacity == pvc.Spec.Resources.Requests.Storage().String() &&
@@ -327,14 +263,6 @@ func createPodVolumeClaim(clientset *kubernetes.Clientset) Result {
 
 	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 9 - Create a pod webserver in public namespace with nginx:alpine image and a volume mount /usr/share/nginx/html and a persistent volume claim unicorn-pvc",
-			Passed:     false,
-			Difficulty: "Hard",
-		}
-	}
-
 	passed := err == nil &&
 		expectedImage == pod.Spec.Containers[0].Image &&
 		expectedPersistentVolumeClaim == pod.Spec.Volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName &&
@@ -357,13 +285,6 @@ func checkPodError(clientset *kubernetes.Clientset) Result {
 
 	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 10 - There is a pod with problem, Can you able to solve it ? Find the problem and fix it",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
 	passed := err == nil &&
 		expectedImage == pod.Spec.Containers[0].Image
 
@@ -385,14 +306,6 @@ func createNetPolRule(clientset *kubernetes.Clientset) Result {
 
 	netPol, err := clientset.NetworkingV1().NetworkPolicies(expectedNamespace).Get(context.TODO(), expectedNetPolName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 11 - Create a network policy allow-policy-colors to allow redmobile-webserver to access bluemobile-dbcache.",
-			Passed:     false,
-			Difficulty: "Hard",
-		}
-	}
-
 	passed := err == nil && hasCorrectIngressRule(netPol.Spec.Ingress)
 
 	return Result{
@@ -411,14 +324,6 @@ func createSecret(clientset *kubernetes.Clientset) Result {
 	)
 
 	secret, err := clientset.CoreV1().Secrets(expectedNamespace).Get(context.TODO(), expectedSecretName, metav1.GetOptions{})
-
-	if err != nil {
-		return Result{
-			TestName:   "Question 12 - Create a secret secret-colors with data color=red in colors namespace",
-			Passed:     false,
-			Difficulty: "Easy",
-		}
-	}
 
 	passed := err == nil &&
 		expectedSecretName == secret.Name &&
@@ -444,14 +349,6 @@ func createPodAddSecret(clientset *kubernetes.Clientset) Result {
 	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
 	secret, err := clientset.CoreV1().Secrets(expectedNamespace).Get(context.TODO(), expectedSecretName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 13 - Add a secret secret-purple with data singer=prince to the pod purple with image redis:alpine in colors namespace",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
-
 	passed := err == nil &&
 		expectedSecretName == pod.Spec.Volumes[0].Secret.SecretName &&
 		expectedDataValue == string(secret.Data[expectedDataKey]) &&
@@ -472,14 +369,6 @@ func createServiceAccount(clientset *kubernetes.Clientset) Result {
 
 	sa, err := clientset.CoreV1().ServiceAccounts(expectedNamespace).Get(context.TODO(), expectedServiceAccountName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 14 - Create a service account america-sa in default namespace",
-			Passed:     false,
-			Difficulty: "Easy",
-		}
-	}
-
 	passed := err == nil &&
 		expectedServiceAccountName == sa.Name
 
@@ -499,14 +388,6 @@ func addServiceAccountToDeployment(clientset *kubernetes.Clientset) Result {
 
 	deploy, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 15 - Add service account america-sa to the deployment mark42",
-			Passed:     false,
-			Difficulty: "Easy",
-		}
-	}
-
 	passed := err == nil &&
 		expectedServiceAccountName == deploy.Spec.Template.Spec.ServiceAccountName
 
@@ -525,14 +406,6 @@ func changeReplicaCount(clientset *kubernetes.Clientset) Result {
 	)
 
 	deploy, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
-
-	if err != nil {
-		return Result{
-			TestName:   "Question 16 - Change the replica count of the deployment mark42 to 5",
-			Passed:     false,
-			Difficulty: "Easy",
-		}
-	}
 
 	passed := err == nil &&
 		expectedReplicas == *deploy.Spec.Replicas
@@ -555,14 +428,6 @@ func createHpa(clientset *kubernetes.Clientset) Result {
 
 	hpa, err := clientset.AutoscalingV2().HorizontalPodAutoscalers(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 17 - Create a horizontal pod autoscaler hpa-mark43 for deployment mark43 with cpu percent 80, min replicas 2 and max replicas 8",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
-
 	passed := err == nil &&
 		expectedDeploymentName == hpa.Spec.ScaleTargetRef.Name &&
 		expectedMinReplicas == *hpa.Spec.MinReplicas &&
@@ -584,14 +449,6 @@ func addSecurityContext(clientset *kubernetes.Clientset) Result {
 	)
 
 	deploy, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
-
-	if err != nil {
-		return Result{
-			TestName:   "Question 18 - Prevent privilege escalation in the deployment mark42",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
 
 	passed := deploy.Spec.Template.Spec.Containers[0].SecurityContext != nil &&
 		*deploy.Spec.Template.Spec.Containers[0].SecurityContext.AllowPrivilegeEscalation == expectedPrivilegeEscalation
@@ -616,14 +473,6 @@ func addLivenessProbe(clientset *kubernetes.Clientset) Result {
 
 	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
 
-	if err != nil || len(pod.Spec.Containers) == 0 || pod.Spec.Containers[0].LivenessProbe == nil {
-		return Result{
-			TestName:   "Question 19 - Add a liveness probe to the pod mark50 with initial delay 5s, period 10s HttpGet, port 80 and path '/' in namespace shield",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
-
 	passed := err == nil &&
 		expectedInitialDelaySeconds == pod.Spec.Containers[0].LivenessProbe.InitialDelaySeconds &&
 		expectedPeriodSeconds == pod.Spec.Containers[0].LivenessProbe.PeriodSeconds &&
@@ -647,14 +496,6 @@ func createDeploymentYellow(clientset *kubernetes.Clientset) Result {
 
 	deployment, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 20 - Create a deployment yellow-deployment with bonovoo/node-app:1.0 image and 2 replicas in namespace colors",
-			Passed:     false,
-			Difficulty: "Easy",
-		}
-	}
-
 	passed := err == nil &&
 		expectedImage == deployment.Spec.Template.Spec.Containers[0].Image &&
 		expectedReplicas == *deployment.Spec.Replicas
@@ -676,14 +517,6 @@ func createServiceForYellow(clientset *kubernetes.Clientset) Result {
 	)
 
 	service, err := clientset.CoreV1().Services(expectedNamespace).Get(context.TODO(), expectedServiceName, metav1.GetOptions{})
-
-	if err != nil {
-		return Result{
-			TestName:   "Question 21 - Create a service yellow-service for the deployment yellow-deployment in namespace colors with port 80 and target port 3000",
-			Passed:     false,
-			Difficulty: "Hard",
-		}
-	}
 
 	passed := err == nil &&
 		expectedPort == service.Spec.Ports[0].Port &&
@@ -714,14 +547,6 @@ func createIngressYellow(clientset *kubernetes.Clientset) Result {
 
 	ingress, err := clientset.NetworkingV1().Ingresses(expectedNamespace).Get(context.TODO(), expectedName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 22 - Create an ingress ingress-colors with host yellow.com, path /yellow and service yellow-service in namespace colors",
-			Passed:     false,
-			Difficulty: "Hard",
-		}
-	}
-
 	ingressSpec := &ingress.Spec
 	rules := ingressSpec.Rules
 
@@ -748,14 +573,6 @@ func createRoleOne(clientset *kubernetes.Clientset) Result {
 	expectedVerbs := []string{"get", "list", "watch"}
 
 	role, err := clientset.RbacV1().Roles(expectedNamespace).Get(context.TODO(), expectedName, metav1.GetOptions{})
-
-	if err != nil {
-		return Result{
-			TestName:   "Question 23 - Create a role apple-one with verbs get, list, watch in namespace fruits",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
 
 	passed := err == nil &&
 		expectedResource == role.Rules[0].Resources[0]
@@ -787,14 +604,6 @@ func createJob(clientset *kubernetes.Clientset) Result {
 
 	job, err := clientset.BatchV1().Jobs(expectedNamespace).Get(context.TODO(), expectedJobName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 24 - Create a job job-gain with parallelism 2, completions 4, backoffLimit 3 and deadlineSeconds 40",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
-
 	passed := err == nil &&
 		expectedParallelism == *job.Spec.Parallelism &&
 		expectedCompletions == *job.Spec.Completions &&
@@ -820,14 +629,6 @@ func createCronjob(clientset *kubernetes.Clientset) Result {
 	)
 
 	cronjob, err := clientset.BatchV1().CronJobs(expectedNamespace).Get(context.TODO(), expectedName, metav1.GetOptions{})
-
-	if err != nil {
-		return Result{
-			TestName:   "Question 25 - Create a cronjob echo run a each 5 minutes with image busybox:1.28, command 'sleep 3600' and restartPolicy Never",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
 
 	passed := err == nil &&
 		expectedScheduleTime == cronjob.Spec.Schedule &&
@@ -855,14 +656,6 @@ func createStateFulSet(clientset *kubernetes.Clientset) Result {
 
 	statefulset, err := clientset.AppsV1().StatefulSets(expectedNamespace).Get(context.TODO(), expectedName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 26 - Create a statefulset statefulset-gain with image busybox:1.28, command 'sleep 3600' and replicas 3",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
-
 	passed := err == nil &&
 		expectedName == statefulset.Name &&
 		expectedImage == statefulset.Spec.Template.Spec.Containers[0].Image &&
@@ -879,7 +672,7 @@ func createStateFulSet(clientset *kubernetes.Clientset) Result {
 // render table of results
 func renderResultsTable(results []Result) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.1.8", "Result", "Difficulty"})
+	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.2.0", "Result", "Difficulty"})
 	table.SetAutoWrapText(false)
 
 	for _, result := range results {
