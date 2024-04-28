@@ -674,7 +674,7 @@ func createStateFulSet(clientset *kubernetes.Clientset) Result {
 // render table of results
 func renderResultsTable(results []Result) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.2.0", "Result", "Difficulty"})
+	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.2.1", "Result", "Difficulty"})
 	table.SetAutoWrapText(false)
 
 	for _, result := range results {
