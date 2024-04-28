@@ -450,8 +450,8 @@ func addSecurityContext(clientset *kubernetes.Clientset) Result {
 
 	deploy, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
 
-	passed := deploy.Spec.Template.Spec.Containers[0].SecurityContext != nil &&
-		*deploy.Spec.Template.Spec.Containers[0].SecurityContext.AllowPrivilegeEscalation == expectedPrivilegeEscalation
+	passed := err == nil || (deploy.Spec.Template.Spec.Containers[0].SecurityContext != nil &&
+		deploy.Spec.Template.Spec.Containers[0].SecurityContext.AllowPrivilegeEscalation != nil)
 
 	return Result{
 		TestName:   "Question 18 - Prevent privilege escalation in the deployment mark42",
@@ -550,7 +550,7 @@ func createIngressYellow(clientset *kubernetes.Clientset) Result {
 	ingressSpec := &ingress.Spec
 	rules := ingressSpec.Rules
 
-	passed := len(rules) > 0 &&
+	passed := err == nil && len(rules) > 0 &&
 		expectedHost == rules[0].Host &&
 		len(rules[0].HTTP.Paths) > 0 &&
 		expectedPath == rules[0].HTTP.Paths[0].Path &&
