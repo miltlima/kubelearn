@@ -369,14 +369,6 @@ func createServiceAccount(clientset *kubernetes.Clientset) Result {
 
 	sa, err := clientset.CoreV1().ServiceAccounts(expectedNamespace).Get(context.TODO(), expectedServiceAccountName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 14 - Create a service account america-sa in default namespace",
-			Passed:     false,
-			Difficulty: "Easy",
-		}
-	}
-
 	passed := err == nil &&
 		expectedServiceAccountName == sa.Name
 
@@ -396,14 +388,6 @@ func addServiceAccountToDeployment(clientset *kubernetes.Clientset) Result {
 
 	deploy, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 15 - Add service account america-sa to the deployment mark42",
-			Passed:     false,
-			Difficulty: "Easy",
-		}
-	}
-
 	passed := err == nil &&
 		expectedServiceAccountName == deploy.Spec.Template.Spec.ServiceAccountName
 
@@ -422,14 +406,6 @@ func changeReplicaCount(clientset *kubernetes.Clientset) Result {
 	)
 
 	deploy, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
-
-	if err != nil {
-		return Result{
-			TestName:   "Question 16 - Change the replica count of the deployment mark42 to 5",
-			Passed:     false,
-			Difficulty: "Easy",
-		}
-	}
 
 	passed := err == nil &&
 		expectedReplicas == *deploy.Spec.Replicas
@@ -452,14 +428,6 @@ func createHpa(clientset *kubernetes.Clientset) Result {
 
 	hpa, err := clientset.AutoscalingV2().HorizontalPodAutoscalers(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 17 - Create a horizontal pod autoscaler hpa-mark43 for deployment mark43 with cpu percent 80, min replicas 2 and max replicas 8",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
-
 	passed := err == nil &&
 		expectedDeploymentName == hpa.Spec.ScaleTargetRef.Name &&
 		expectedMinReplicas == *hpa.Spec.MinReplicas &&
@@ -481,14 +449,6 @@ func addSecurityContext(clientset *kubernetes.Clientset) Result {
 	)
 
 	deploy, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
-
-	if err != nil {
-		return Result{
-			TestName:   "Question 18 - Prevent privilege escalation in the deployment mark42",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
 
 	passed := deploy.Spec.Template.Spec.Containers[0].SecurityContext != nil &&
 		*deploy.Spec.Template.Spec.Containers[0].SecurityContext.AllowPrivilegeEscalation == expectedPrivilegeEscalation
@@ -513,14 +473,6 @@ func addLivenessProbe(clientset *kubernetes.Clientset) Result {
 
 	pod, err := clientset.CoreV1().Pods(expectedNamespace).Get(context.TODO(), expectedPodName, metav1.GetOptions{})
 
-	if err != nil || len(pod.Spec.Containers) == 0 || pod.Spec.Containers[0].LivenessProbe == nil {
-		return Result{
-			TestName:   "Question 19 - Add a liveness probe to the pod mark50 with initial delay 5s, period 10s HttpGet, port 80 and path '/' in namespace shield",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
-
 	passed := err == nil &&
 		expectedInitialDelaySeconds == pod.Spec.Containers[0].LivenessProbe.InitialDelaySeconds &&
 		expectedPeriodSeconds == pod.Spec.Containers[0].LivenessProbe.PeriodSeconds &&
@@ -544,14 +496,6 @@ func createDeploymentYellow(clientset *kubernetes.Clientset) Result {
 
 	deployment, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedName, metav1.GetOptions{})
 
-	// if err != nil {
-	// 	return Result{
-	// 		TestName:   "Question 20 - Create a deployment yellow-deployment with bonovoo/node-app:1.0 image and 2 replicas in namespace colors",
-	// 		Passed:     false,
-	// 		Difficulty: "Easy",
-	// 	}
-	// }
-
 	passed := err == nil &&
 		expectedImage == deployment.Spec.Template.Spec.Containers[0].Image &&
 		expectedReplicas == *deployment.Spec.Replicas
@@ -573,14 +517,6 @@ func createServiceForYellow(clientset *kubernetes.Clientset) Result {
 	)
 
 	service, err := clientset.CoreV1().Services(expectedNamespace).Get(context.TODO(), expectedServiceName, metav1.GetOptions{})
-
-	if err != nil {
-		return Result{
-			TestName:   "Question 21 - Create a service yellow-service for the deployment yellow-deployment in namespace colors with port 80 and target port 3000",
-			Passed:     false,
-			Difficulty: "Hard",
-		}
-	}
 
 	passed := err == nil &&
 		expectedPort == service.Spec.Ports[0].Port &&
@@ -611,14 +547,6 @@ func createIngressYellow(clientset *kubernetes.Clientset) Result {
 
 	ingress, err := clientset.NetworkingV1().Ingresses(expectedNamespace).Get(context.TODO(), expectedName, metav1.GetOptions{})
 
-	if err != nil {
-		return Result{
-			TestName:   "Question 22 - Create an ingress ingress-colors with host yellow.com, path /yellow and service yellow-service in namespace colors",
-			Passed:     false,
-			Difficulty: "Hard",
-		}
-	}
-
 	ingressSpec := &ingress.Spec
 	rules := ingressSpec.Rules
 
@@ -645,14 +573,6 @@ func createRoleOne(clientset *kubernetes.Clientset) Result {
 	expectedVerbs := []string{"get", "list", "watch"}
 
 	role, err := clientset.RbacV1().Roles(expectedNamespace).Get(context.TODO(), expectedName, metav1.GetOptions{})
-
-	if err != nil {
-		return Result{
-			TestName:   "Question 23 - Create a role apple-one with verbs get, list, watch in namespace fruits",
-			Passed:     false,
-			Difficulty: "Medium",
-		}
-	}
 
 	passed := err == nil &&
 		expectedResource == role.Rules[0].Resources[0]
@@ -752,7 +672,7 @@ func createStateFulSet(clientset *kubernetes.Clientset) Result {
 // render table of results
 func renderResultsTable(results []Result) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.1.8", "Result", "Difficulty"})
+	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.2.0", "Result", "Difficulty"})
 	table.SetAutoWrapText(false)
 
 	for _, result := range results {
