@@ -450,8 +450,9 @@ func addSecurityContext(clientset *kubernetes.Clientset) Result {
 
 	deploy, err := clientset.AppsV1().Deployments(expectedNamespace).Get(context.TODO(), expectedDeploymentName, metav1.GetOptions{})
 
-	passed := err == nil || (deploy.Spec.Template.Spec.Containers[0].SecurityContext != nil &&
-		deploy.Spec.Template.Spec.Containers[0].SecurityContext.AllowPrivilegeEscalation != nil)
+	passed := err == nil && deploy.Spec.Template.Spec.Containers != nil && len(deploy.Spec.Template.Spec.Containers) > 0 &&
+		(deploy.Spec.Template.Spec.Containers[0].SecurityContext != nil &&
+			deploy.Spec.Template.Spec.Containers[0].SecurityContext.AllowPrivilegeEscalation != nil)
 
 	return Result{
 		TestName:   "Question 18 - Prevent privilege escalation in the deployment mark42",
@@ -574,13 +575,14 @@ func createRoleOne(clientset *kubernetes.Clientset) Result {
 
 	role, err := clientset.RbacV1().Roles(expectedNamespace).Get(context.TODO(), expectedName, metav1.GetOptions{})
 
-	passed := err == nil &&
+	passed := err == nil && len(role.Rules) > 0 && len(role.Rules[0].Resources) > 0 &&
 		expectedResource == role.Rules[0].Resources[0]
-
-	for _, verb := range expectedVerbs {
-		if !contains(role.Rules[0].Verbs, verb) {
-			passed = false
-			break
+	if passed {
+		for _, verb := range expectedVerbs {
+			if !contains(role.Rules[0].Verbs, verb) {
+				passed = false
+				break
+			}
 		}
 	}
 
@@ -672,7 +674,7 @@ func createStateFulSet(clientset *kubernetes.Clientset) Result {
 // render table of results
 func renderResultsTable(results []Result) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.2.0", "Result", "Difficulty"})
+	table.SetHeader([]string{"KubeLearn - Test your knowledge of Kubernetes v0.2.1", "Result", "Difficulty"})
 	table.SetAutoWrapText(false)
 
 	for _, result := range results {
