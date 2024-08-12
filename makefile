@@ -1,14 +1,17 @@
-# Makefile to install YAML manifests and install kind optionally
+# Makefile for KubeLearn project
+
 help:
 	@echo "Makefile Help"
 	@echo ""
 	@echo "Targets:"
-	@echo "  all          Installs all YAML manifests."
-	@echo "  clean        Deletes all installed resources."
-	@echo "  check-syntax Checks the syntax of all manifests without actually installing them."
-	@echo "  init         Initializes the Terraform repository."
-	@echo "  apply        Applies Terraform configurations."
-	@echo "  destroy      Destroys Terraform resources."
+	@echo "  all              Installs all YAML manifests."
+	@echo "  clean            Deletes all installed resources."
+	@echo "  check-syntax     Checks the syntax of all manifests without actually installing them."
+	@echo "  init             Initializes the Terraform repository."
+	@echo "  apply            Applies Terraform configurations."
+	@echo "  destroy          Destroys Terraform resources."
+	@echo "  Kubelearn        Sets up and runs both backend and frontend."
+	@echo "  stopKubelearn    Stops both backend and frontend."
 	@echo ""
 	@echo "Usage:"
 	@echo "  make all"
@@ -17,6 +20,8 @@ help:
 	@echo "  make init"
 	@echo "  make apply"
 	@echo "  make destroy"
+	@echo "  make Kubelearn"
+	@echo "  make stopKubelearn"
 
 # Directory where the YAML manifests are located
 MANIFESTS_DIR := manifests
@@ -75,3 +80,19 @@ apply: ## Apply Terraform configurations
 destroy: ## Destroy Terraform resources
 	@echo "Destroying Terraform resources..."
 	$(TERRAFORM_DESTROY)
+
+# Initializes Terraform and sets up the backend and frontend
+Kubelearn: 
+	@echo "Setting up the environment..."
+	@$(TERRAFORM_INIT)
+	@$(TERRAFORM_APPLY)
+	@echo "Setting up and starting the backend..."
+	@cd cmd && go build -o kubelearn && nohup ./kubelearn > backend.log 2>&1 &
+	@echo "Setting up and starting the frontend..."
+	@cd kubelearn-frontend && npm install && nohup npm start > frontend.log 2>&1 &
+
+# Stops the backend and frontend
+stopKubelearn:
+	@echo "Stopping the backend and frontend..."
+	@pkill -f kubelearn || true
+	@pkill -f "npm start" || true
