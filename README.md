@@ -1,73 +1,130 @@
-# Kubelearn
+# KubeLearn Project Documentation
 
-Practice you kubernetes knowledge
+## Overview
 
-Requirements:
+KubeLearn is a tool designed to help users test and expand their knowledge of Kubernetes. This project includes both a backend, which runs various Kubernetes-related tasks, and a frontend, which provides a user interface for interacting with the tool.
 
-- Golang 1.21
-- Terraform 1.5
+## Project Structure
 
-## how to use
-
-**Clone the repository**
+The project is organized into the following directories:
 
 ```bash
-git clone git@github.com:miltlima/kubelearn.git
+.
+├── cmd
+│   └── main.go                # Backend Go application
+├── kubelearn-frontend         # Frontend React application
+│   ├── postcss.config.js
+│   ├── src
+│   │   ├── App.js
+│   │   ├── App.test.js
+│   │   ├── index.js
+│   │   ├── reportWebVitals.js
+│   │   └── setupTests.js
+│   └── tailwind.config.js
+├── makefile                   # Makefile for managing the project
+└── pkg
+    ├── k8s                    # Kubernetes-related utilities
+    │   └── client.go
+    ├── resources              # Contains Kubernetes-related questions
+    │   ├── easy
+    │   ├── hard
+    │   └── medium
+    └── utils                  # Additional utilities
 ```
+## Prerequisites
 
-**Enter inside folder kubelearn**
+To run the project locally, you need to have the following installed:
 
-```bash
-cd kubelearn
-```
+- Go (Golang)
+- Node.js and npm
+- Terraform
+- Kubernetes (kubectl)
+- Kind (for local Kubernetes clusters)
 
-## Optionally you can install kind using make ( requires Docker)
+## Makefile Commands
 
-**Initialize Terraform repository**:
+The `Makefile` provides several commands to manage the project efficiently. Below is a summary of the available targets:
+
+### Setup and Run KubeLearn
+
+This command initializes Terraform, sets up the backend and frontend, and starts the services.
 
 ```sh
-make init
+make Kubelearn
 ```
 
-**Apply Terraform configurations**:
+### Stop KubeLearn
+
+This command stops the backend and frontend services.
 
 ```sh
-make apply
+make stopKubelearn
 ```
 
-**Destroy Terraform resources**
+### Terraform Commands
 
-```sh
-make destroy
-```
+- **init**: Initializes the Terraform configuration.
 
-## You can also use `make help` for list available commands
+  ```sh
+  make init
+  ```
 
-- `all`: Installs all YAML manifests.
-- `clean`: Deletes all installed resources.
-- `check-syntax`: Checks the syntax of all manifests without actually installing them.
-- `init`: Initializes the Terraform repository.
-- `apply`: Applies Terraform configurations.
-- `destroy`: Destroys Terraform resources.
+- **apply**: Applies the Terraform configuration.
 
-## Prepare environment ( this will create kubernetes objects needed for some questions)
+  ```sh
+  make apply
+  ```
 
-**Install YAML manifests**:
+- **destroy**: Destroys the Terraform-managed infrastructure.
 
-```sh
-make all
-```
+  ```sh
+  make destroy
+  ```
 
-**Clean up installed resources**:
+### Kubernetes Manifest Management
 
-```sh
-make clean
-```
+- **all**: Installs all Kubernetes manifests from the `manifests` directory.
 
-**Check manifest syntax**:
+  ```sh
+  make all
+  ```
 
-```sh
-make check-syntax
+- **clean**: Deletes all installed Kubernetes resources.
+
+  ```sh
+  make clean
+  ```
+
+- **check-syntax**: Validates the syntax of all Kubernetes manifests without applying them.
+
+  ```sh
+  make check-syntax
+  ```
+
+## Running the Project
+
+1. **Setup Environment**: Run `make Kubelearn` to initialize Terraform and start both the backend and frontend.
+
+2. **Access the Application**: After running the setup, the frontend will be available at `http://localhost:3000` by default, and the backend API at `http://localhost:8083`.
+
+3. **Stop the Services**: Run `make stopKubelearn` to stop the backend and frontend services.
+
+## Additional Information
+
+- Logs for the backend and frontend are stored in `backend.log` and `frontend.log`, respectively.
+- Ensure that your Kubernetes environment is properly configured before running the application.
+
+## Troubleshooting
+
+- If Terraform fails to initialize, ensure that your Terraform installation is correct and that the `config` directory contains valid configurations.
+- If the frontend doesn't start, verify that all npm dependencies are installed correctly.
+
+---
+
+This documentation should cover the basic setup and usage of the KubeLearn project. For more detailed instructions or troubleshooting, please refer to the specific sections in this document.
+``` 
+
+You can use this documentation as a starting point and expand it further as needed. It covers the basic commands, project structure, and steps to run the project locally.
 ```
 
 ## Answer the questions below
@@ -101,12 +158,4 @@ make check-syntax
 | 25        | Create a cronjob `cronjob-gain` run a each `5` minutes with image `busybox:1.28`, command `'sleep 3600'` and restartPolicy `Never`                                     |
 | 26        | Create a statefulset `statefulset-gain` with image `busybox:1.28`, command `'sleep 3600'` and replicas `3`                                                             |
 
-## Running the following command
 
-```bash
-go run main.go
-```
-
-## This will show the table above
-
-![Kubelearn](images/kubelearn.png)
