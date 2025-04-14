@@ -130,10 +130,10 @@ make stopKubelearn
 ---
 
 This documentation should cover the basic setup and usage of the KubeLearn project. For more detailed instructions or troubleshooting, please refer to the specific sections in this document.
-``` 
+- If you encounter issues with Kubernetes resources, check the logs of the respective pods using `kubectl logs <pod-name>`. 
 
 You can use this documentation as a starting point and expand it further as needed. It covers the basic commands, project structure, and steps to run the project locally.
-```
+
 
 ## Answer the questions below
 
