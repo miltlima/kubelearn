@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/kubelearn-logo.png" alt="Kubelearn Logo" width="250"/>
+  <img src="./assets/kubelearn_logo.png" alt="Kubelearn Logo" width="250"/>
 </p>
 
 <h1 align="center">Kubelearn</h1>
