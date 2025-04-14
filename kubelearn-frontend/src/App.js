@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
+
 function App() {
   const [questions, setQuestions] = useState([]);
   const [quizStarted, setQuizStarted] = useState(false);
@@ -66,10 +67,13 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4 font-roboto-condensed">
-      <h1 className="text-3xl font-bold text-gray-800 mb-6">
-        KubeLearn - Test your knowledge of Kubernetes
-      </h1>
-
+      {/* Logo */}
+      <img
+        src="images/kubelearn_logo.png"
+        alt="KubeLearn Logo"
+        className="w-[400px] sm:w-[480px] md:w-[560px] lg:w-[640px] mb-10 mx-auto"
+      />
+        <h1 className="text-3xl font-bold text-gray-800 mb-20">“Kubernetes feels like magic… until it breaks. Let’s learn to tame the YAML together. Test your Kubernetes superpowers</h1>
       <div className="flex flex-col items-center w-full max-w-7xl">
         {!quizStarted && (
           <button
