@@ -1,4 +1,12 @@
-# KubeLearn Project Documentation
+<p align="center">
+  <img src="./assets/kubelearn-logo.png" alt="Kubelearn Logo" width="250"/>
+</p>
+
+<h1 align="center">Kubelearn</h1>
+
+<p align="center">
+  Test your knowledge of Kubernetes — interactive quizzes, timed challenges, and score tracking.
+</p>
 
 ## Overview
 
