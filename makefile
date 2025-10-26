@@ -1,98 +1,174 @@
-# Makefile for KubeLearn project
+SHELL := /bin/bash
+.DEFAULT_GOAL := help
 
-help:
-	@echo "Makefile Help"
-	@echo ""
-	@echo "Targets:"
-	@echo "  all              Installs all YAML manifests."
-	@echo "  clean            Deletes all installed resources."
-	@echo "  check-syntax     Checks the syntax of all manifests without actually installing them."
-	@echo "  init             Initializes the Terraform repository."
-	@echo "  apply            Applies Terraform configurations."
-	@echo "  destroy          Destroys Terraform resources."
-	@echo "  Kubelearn        Sets up and runs both backend and frontend."
-	@echo "  stopKubelearn    Stops both backend and frontend."
-	@echo ""
-	@echo "Usage:"
-	@echo "  make all"
-	@echo "  make clean"
-	@echo "  make check-syntax"
-	@echo "  make init"
-	@echo "  make apply"
-	@echo "  make destroy"
-	@echo "  make Kubelearn"
-	@echo "  make stopKubelearn"
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+KUBE_CONTEXT ?= kind-kubelearn
+MANIFESTS_DIR ?= manifests
+TERRAFORM_DIR ?= config
+BACKEND_DIR ?= cmd
+BACKEND_BIN ?= bin/kubelearn
+FRONTEND_DIR ?= kubelearn-frontend
+LOG_DIR ?= logs
 
-# Directory where the YAML manifests are located
-MANIFESTS_DIR := manifests
+# -----------------------------------------------------------------------------
+# Derived variables
+# -----------------------------------------------------------------------------
+YAML_FILES := $(sort $(wildcard $(MANIFESTS_DIR)/*.yaml))
+MANIFEST_TARGETS := $(patsubst $(MANIFESTS_DIR)/%,apply-%,$(YAML_FILES))
+MKDIR_P := mkdir -p
+TERRAFORM := terraform -chdir=$(TERRAFORM_DIR)
+NPM := npm --prefix $(FRONTEND_DIR)
 
-# Command to install the manifests
-INSTALL_COMMAND := kubectl apply -f
+.PHONY: \
+	help \
+	manifests-apply \
+	manifests-install \
+	apply-% \
+	manifests-delete \
+	manifests-lint \
+	terraform-init \
+	terraform-plan \
+	terraform-apply \
+	terraform-destroy \
+	kube-context \
+	infra-up \
+	backend-build \
+	backend-start \
+	backend-stop \
+	frontend-install \
+	frontend-start \
+	frontend-stop \
+	kubelearn \
+	stop-kubelearn \
+	logs-dir \
+	clean
 
-# List all YAML files in the manifests folder
-YAML_FILES := $(wildcard $(MANIFESTS_DIR)/*.yaml)
+help: ## Show available targets and configurable variables
+	@echo "KubeLearn automation targets"
+	@echo
+	@grep -hE '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*##"} {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
+	@echo
+	@echo "Variables:"
+	@echo "  KUBE_CONTEXT    kubectl context to switch to (default: $(KUBE_CONTEXT))"
+	@echo "  MANIFESTS_DIR   directory containing Kubernetes manifests (default: $(MANIFESTS_DIR))"
+	@echo "  TERRAFORM_DIR   Terraform configuration directory (default: $(TERRAFORM_DIR))"
+	@echo "  FRONTEND_DIR    Frontend app directory (default: $(FRONTEND_DIR))"
+	@echo "  BACKEND_BIN     Location for compiled backend binary (default: $(BACKEND_BIN))"
+	@echo "  LOG_DIR         Directory for runtime logs and PID files (default: $(LOG_DIR))"
 
-# Get only the file names (without the directory path)
-BASE_NAMES := $(notdir $(YAML_FILES))
+# -----------------------------------------------------------------------------
+# Kubernetes manifests
+# -----------------------------------------------------------------------------
+manifests-apply: $(MANIFEST_TARGETS) ## Apply all manifests in $(MANIFESTS_DIR)
 
-# Add a prefix for the install target
-TARGETS := $(addprefix install-,$(BASE_NAMES))
+manifests-install: manifests-apply ## Backwards compatibility alias for manifests-apply
 
-# Default rule to install all manifests
-all: $(TARGETS)
+apply-%: $(MANIFESTS_DIR)/% ## Apply a single manifest (usage: make apply-filename.yaml)
+	@echo "Applying $<"
+	@kubectl apply -f $<
 
-# Rules to install each individual manifest
-$(TARGETS): install-%: $(MANIFESTS_DIR)/%
-	$(INSTALL_COMMAND) $<
+manifests-delete: ## Delete all manifests in $(MANIFESTS_DIR)
+	@echo "Deleting manifests in $(MANIFESTS_DIR)"
+	@kubectl delete -f $(MANIFESTS_DIR) --ignore-not-found
 
-# Rule to clean up all installed resources
-clean:
-	kubectl delete -f $(MANIFESTS_DIR)
-
-# Rule to check syntax of all manifests without actually installing them
-check-syntax:
-	for file in $(YAML_FILES); do \
-		kubectl apply --dry-run=client -f $$file; \
+manifests-lint: ## Dry-run manifests for basic validation
+	@echo "Validating manifests in $(MANIFESTS_DIR)"
+	@for file in $(YAML_FILES); do \
+		echo "Checking $$file"; \
+		kubectl apply --dry-run=client -f $$file >/dev/null; \
 	done
 
-# Directory where the Terraform code is
-TERRAFORM_DIR := config
+# -----------------------------------------------------------------------------
+# Terraform
+# -----------------------------------------------------------------------------
+terraform-init: ## Initialize Terraform state
+	@echo "Initializing Terraform in $(TERRAFORM_DIR)"
+	@$(TERRAFORM) init
 
-# Commands
-TERRAFORM := terraform
-TERRAFORM_CMD := $(TERRAFORM) -chdir=$(TERRAFORM_DIR)
-TERRAFORM_INIT := $(TERRAFORM_CMD) init  
-TERRAFORM_APPLY := $(TERRAFORM_CMD) apply -auto-approve
-TERRAFORM_DESTROY := $(TERRAFORM_CMD) destroy -auto-approve
+terraform-plan: terraform-init ## Show Terraform execution plan
+	@echo "Generating Terraform plan"
+	@$(TERRAFORM) plan
 
-# Targets
-.PHONY: init apply destroy init-upgrade
+terraform-apply: terraform-init ## Apply Terraform infrastructure
+	@echo "Applying Terraform configuration"
+	@$(TERRAFORM) apply -auto-approve
 
-# Rules
-init: ## Initialize Terraform repository
-	@echo "Initializing Terraform..."
-	$(TERRAFORM_INIT)
+terraform-destroy: terraform-init ## Destroy Terraform infrastructure
+	@echo "Destroying Terraform infrastructure"
+	@$(TERRAFORM) destroy -auto-approve
 
-apply: ## Apply Terraform configurations
-	@echo "Applying Terraform configurations..."
-	$(TERRAFORM_APPLY)
+# -----------------------------------------------------------------------------
+# Runtime helpers
+# -----------------------------------------------------------------------------
+logs-dir:
+	@$(MKDIR_P) $(LOG_DIR)
 
-destroy: ## Destroy Terraform resources
-	@echo "Destroying Terraform resources..."
-	$(TERRAFORM_DESTROY)
+backend-build: ## Build backend binary
+	@echo "Building backend binary at $(BACKEND_BIN)"
+	@$(MKDIR_P) $(dir $(BACKEND_BIN))
+	@go build -o $(BACKEND_BIN) ./$(BACKEND_DIR)
 
-# Initializes Terraform and sets up the backend and frontend
-Kubelearn: 
-	@echo "Setting up the environment..."
-	@$(TERRAFORM_INIT)
-	@$(TERRAFORM_APPLY)
-	@echo "Setting up and starting the backend..."
-	@cd cmd && go build -o kubelearn && nohup ./kubelearn > backend.log 2>&1 &
-	@echo "Setting up and starting the frontend..."
-	@cd kubelearn-frontend && npm install && nohup npm start > frontend.log 2>&1 &
+backend-start: backend-build logs-dir ## Start backend service in the background
+	@echo "Starting backend (logging to $(LOG_DIR)/backend.log)"
+	@nohup ./$(BACKEND_BIN) > $(LOG_DIR)/backend.log 2>&1 &
+	@echo $$! > $(LOG_DIR)/backend.pid
 
-# Stops the backend and frontend
-stopKubelearn:
-	@echo "Stopping the backend and frontend..."
-	@pkill -f kubelearn || true
-	@pkill -f "npm start" || true
+backend-stop: ## Stop backend service if running
+	@echo "Stopping backend"
+	@if [ -f $(LOG_DIR)/backend.pid ]; then \
+		kill "$$(cat $(LOG_DIR)/backend.pid)" >/dev/null 2>&1 || true; \
+		rm -f $(LOG_DIR)/backend.pid; \
+	else \
+		pkill -f "$(BACKEND_BIN)" >/dev/null 2>&1 || true; \
+	fi
+
+frontend-install: ## Install frontend dependencies
+	@echo "Installing frontend dependencies"
+	@$(NPM) install
+
+frontend-start: frontend-install logs-dir ## Start frontend dev server in the background
+	@echo "Starting frontend (logging to $(LOG_DIR)/frontend.log)"
+	@nohup $(NPM) run start > $(LOG_DIR)/frontend.log 2>&1 &
+	@echo $$! > $(LOG_DIR)/frontend.pid
+
+frontend-stop: ## Stop frontend dev server if running
+	@echo "Stopping frontend"
+	@if [ -f $(LOG_DIR)/frontend.pid ]; then \
+		kill "$$(cat $(LOG_DIR)/frontend.pid)" >/dev/null 2>&1 || true; \
+		rm -f $(LOG_DIR)/frontend.pid; \
+	else \
+		pkill -f "$(FRONTEND_DIR)" >/dev/null 2>&1 || true; \
+		pkill -f "react-scripts start" >/dev/null 2>&1 || true; \
+	fi
+
+kube-context: ## Switch kubectl to the KubeLearn cluster context
+	@echo "Switching kubectl context to '$(KUBE_CONTEXT)'"
+	@attempt=0; \
+	until kubectl config get-contexts $(KUBE_CONTEXT) >/dev/null 2>&1; do \
+		if [ $$attempt -ge 20 ]; then \
+			echo "Context '$(KUBE_CONTEXT)' not found. Aborting." >&2; \
+			exit 1; \
+		fi; \
+		attempt=$$((attempt+1)); \
+		echo "Waiting for context '$(KUBE_CONTEXT)' to become available..."; \
+		sleep 3; \
+	done
+	@kubectl config use-context $(KUBE_CONTEXT)
+
+infra-up: terraform-apply ## Provision infrastructure and switch kubectl context
+	@$(MAKE) kube-context
+	@echo "Infrastructure provisioned and context set to '$(KUBE_CONTEXT)'"
+
+kubelearn: infra-up backend-start frontend-start ## Provision infra, switch context, start backend & frontend
+	@echo "KubeLearn environment ready."
+	@echo "  Backend log : $(LOG_DIR)/backend.log"
+	@echo "  Frontend log: $(LOG_DIR)/frontend.log"
+
+stop-kubelearn: backend-stop frontend-stop ## Stop backend and frontend processes
+	@echo "KubeLearn services stopped"
+
+clean: stop-kubelearn ## Stop services and remove build artifacts
+	@echo "Removing backend binary and logs"
+	@rm -rf $(BACKEND_BIN) $(LOG_DIR)
