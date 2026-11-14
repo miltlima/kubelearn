@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { translator } from '../i18n';
 
 const STATUS = {
   CONNECTING: 'connecting',
@@ -7,7 +8,15 @@ const STATUS = {
   ERROR: 'error',
 };
 
-const TerminalPanel = ({ isVisible }) => {
+// Used when no translator is passed in: show the key's English text.
+const english = translator('en');
+
+const TerminalPanel = ({ isVisible, t = english }) => {
+  // The connection effect must not restart when the language changes, so its
+  // messages read the current translator through a ref.
+  const translate = useRef(t);
+  translate.current = t;
+
   const [socket, setSocket] = useState(null);
   const [status, setStatus] = useState(STATUS.CONNECTING);
   const [lines, setLines] = useState([]);
@@ -35,7 +44,7 @@ const TerminalPanel = ({ isVisible }) => {
     } catch (connectionError) {
       console.warn('[KubeLearn] Unable to create terminal WebSocket:', connectionError);
       setStatus(STATUS.ERROR);
-      setLines((prev) => [...prev, 'Could not open terminal connection. Check if the backend service is running on port 8083.']);
+      setLines((prev) => [...prev, translate.current('terminal.cannotOpen')]);
       return;
     }
 
@@ -58,7 +67,7 @@ const TerminalPanel = ({ isVisible }) => {
       const detail = event?.message || '';
       console.warn(`[KubeLearn] Terminal connection error${detail ? `: ${detail}` : ''}`, event);
       setStatus(STATUS.ERROR);
-      setLines((prev) => [...prev, 'Connection error. Verify the backend service is running on port 8083.']);
+      setLines((prev) => [...prev, translate.current('terminal.connectionError')]);
     };
     ws.onmessage = (event) => {
       if (stale) return;
@@ -142,15 +151,15 @@ const TerminalPanel = ({ isVisible }) => {
     if (socket) {
       socket.close();
     }
-    setLines((prev) => [...prev, '--- reconnecting terminal session ---']);
+    setLines((prev) => [...prev, t('terminal.reconnecting')]);
     setReconnectToken((prev) => prev + 1);
   };
 
   const statusText = {
-    [STATUS.CONNECTING]: 'Connecting',
-    [STATUS.OPEN]: 'Connected',
-    [STATUS.CLOSED]: 'Closed',
-    [STATUS.ERROR]: 'Error',
+    [STATUS.CONNECTING]: t('terminal.connecting'),
+    [STATUS.OPEN]: t('terminal.open'),
+    [STATUS.CLOSED]: t('terminal.closed'),
+    [STATUS.ERROR]: t('terminal.error'),
   }[status];
 
   const statusDot = {
@@ -167,14 +176,14 @@ const TerminalPanel = ({ isVisible }) => {
   return (
     <div className="flex h-full min-h-0 flex-col bg-term">
       <header className="flex items-center gap-4 border-b border-line px-4 py-2">
-        <h2 className="text-sm font-semibold text-fg">Terminal</h2>
+        <h2 className="text-sm font-semibold text-fg">{t('terminal.title')}</h2>
         <p className="flex items-center gap-2 text-sm text-muted">
           <span className={`h-2 w-2 rounded-full ${statusDot}`} aria-hidden="true" />
           {statusText}
         </p>
         {canReconnect && (
           <button type="button" onClick={handleReconnect} className={chromeButton}>
-            Reconnect
+            {t('terminal.reconnect')}
           </button>
         )}
         <button
@@ -185,18 +194,18 @@ const TerminalPanel = ({ isVisible }) => {
           }}
           className={`ml-auto ${chromeButton}`}
         >
-          Clear
+          {t('terminal.clear')}
         </button>
       </header>
 
       <div
         ref={outputRef}
         role="log"
-        aria-label="Terminal output"
+        aria-label={t('terminal.output')}
         className="min-h-0 flex-1 overflow-auto px-4 py-3 font-mono text-[13px] leading-relaxed text-fg"
       >
         {lines.length === 0 ? (
-          <p className="text-muted">Commands run on your machine, against the current kubectl context. Try: kubectl get pods -A</p>
+          <p className="text-muted">{t('terminal.hint')}</p>
         ) : (
           lines.map((line, index) => (
             <pre
@@ -218,10 +227,10 @@ const TerminalPanel = ({ isVisible }) => {
           value={command}
           onChange={(event) => setCommand(event.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={status === STATUS.OPEN ? 'Type a command and press Enter' : 'Terminal is not connected'}
+          placeholder={status === STATUS.OPEN ? t('terminal.placeholder') : t('terminal.disconnected')}
           className="min-w-0 flex-1 bg-transparent text-fg placeholder:text-muted/70 focus:outline-none"
           disabled={status !== STATUS.OPEN}
-          aria-label="Terminal command input"
+          aria-label={t('terminal.input')}
           autoComplete="off"
           autoCapitalize="off"
           spellCheck={false}

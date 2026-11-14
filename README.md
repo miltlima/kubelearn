@@ -91,10 +91,11 @@ The frontend also lists a few extra CKS scenarios from these areas. They are mar
 
 ## Using the app
 
-1. **Choose a track and a difficulty** on the start screen and start the attempt. Only the matching questions are asked and scored. The timer starts.
-2. **Solve the questions** from the terminal on the right. Commands run on your machine against the current kubectl context.
-3. **Check progress** at any time. Each question shows whether it is solved and, if not, the reason. Checking does not end the attempt.
-4. **Finish the attempt** to see your score. The passing score is 85%.
+1. **Choose the language** with the PT, EN and ES buttons. The interface and the question statements are translated; the feedback explaining why a question is not solved comes from the backend in English.
+2. **Choose a track and a difficulty** on the start screen and start the attempt. Only the matching questions are asked and scored. The timer starts.
+3. **Solve the questions** from the terminal on the right. Commands run on your machine against the current kubectl context.
+4. **Check progress** at any time. Each question shows whether it is solved and, if not, the reason. Checking does not end the attempt.
+5. **Finish the attempt** to see your score. The passing score is 85%.
 
 Example answers for the CKS and CKNE tracks are in `manifests_examples/cks-solutions.yaml` and `manifests_examples/ckne-solutions.yaml`.
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useId } from 'react';
 import TerminalPanel from './components/TerminalPanel';
+import { LANGUAGES, initialLanguage, saveLanguage, translator, questionText } from './i18n';
 
 const PASS_THRESHOLD = 85;
 
@@ -61,20 +62,10 @@ const FALLBACK_QUESTIONS = BASE_QUESTIONS.map((item, idx) => ({
 
 const API = 'http://localhost:8083';
 
-// Exam tracks offered on the start screen. "all" runs every question.
-const TRACKS = [
-  { id: 'all', label: 'All', about: 'Every track' },
-  { id: 'Core', label: 'Core', about: 'General' },
-  { id: 'CKS', label: 'CKS', about: 'Security' },
-  { id: 'CKNE', label: 'CKNE', about: 'Networking' },
-];
-
-const DIFFICULTIES = [
-  { id: 'all', label: 'Any' },
-  { id: 'Easy', label: 'Easy' },
-  { id: 'Medium', label: 'Medium' },
-  { id: 'Hard', label: 'Hard' },
-];
+// Exam tracks and difficulty levels offered on the start screen. "all" selects
+// everything.
+const TRACKS = ['all', 'Core', 'CKS', 'CKNE'];
+const DIFFICULTIES = ['all', 'Easy', 'Medium', 'Hard'];
 
 // Selects the questions of a track and a difficulty; "all" matches anything.
 const matching = (track, difficulty) => (question) =>
@@ -95,17 +86,61 @@ const secondaryButtonClasses = `inline-flex items-center justify-center rounded-
 
 const quietButtonClasses = `rounded-md px-2 py-2 text-sm text-muted transition-colors hover:text-fg ${focusRing}`;
 
+const LOGO = `${process.env.PUBLIC_URL}/images/kubelearn_logo.png`;
+
+// The logo artwork is dark blue on a transparent background, so on this dark
+// interface it sits on a white plate to stay legible.
+const Logo = () => (
+  <span className="inline-block rounded-xl bg-white px-4 py-2.5">
+    <img src={LOGO} alt="KubeLearn" className="block h-14 w-auto sm:h-16" />
+  </span>
+);
+
+// Only the emblem (the left part of the logo image), for the attempt bar.
+const LogoMark = () => (
+  <span className="inline-block rounded-md bg-white p-1" aria-hidden="true">
+    <span className="block h-6 w-[18px] overflow-hidden">
+      <img src={LOGO} alt="" className="block h-6 max-w-none" />
+    </span>
+  </span>
+);
+
+const LanguageSwitcher = ({ lang, onChange, t }) => (
+  <div role="group" aria-label={t('language')} className="inline-flex shrink-0 rounded-md border border-line p-0.5">
+    {LANGUAGES.map((language) => (
+      <button
+        key={language.id}
+        type="button"
+        lang={language.id}
+        onClick={() => onChange(language.id)}
+        aria-pressed={lang === language.id}
+        aria-label={language.name}
+        title={language.name}
+        className={`rounded px-2.5 py-1 text-sm font-semibold transition-colors ${
+          lang === language.id ? 'bg-kube text-white' : 'text-muted hover:text-fg'
+        } ${focusRing}`}
+      >
+        {language.short}
+      </button>
+    ))}
+  </div>
+);
+
 const extractObjective = (testName = '') => {
   if (!testName) return 'Question not available.';
   const stripped = testName.replace(/^(Question|Challenge|Advanced)\s*\d+\s*[-–—:]\s*/i, '').trim();
   return stripped.length ? stripped : testName;
 };
 
+// The statement of a question in the chosen language, falling back to the
+// English one sent by the backend.
+const statement = (question, lang) => questionText(question.TestName, lang) ?? extractObjective(question.TestName);
+
 // Renders `names` wrapped in backticks as inline code.
 const renderInline = (text) =>
   text.split('`').map((part, idx) =>
     idx % 2 === 1 ? (
-      <code key={idx} className="rounded bg-panel px-1.5 py-0.5 font-mono text-[0.9em] text-kube-soft">
+      <code key={idx} className="rounded bg-ink px-1.5 py-0.5 font-mono text-[0.9em] text-kube-soft">
         {part}
       </code>
     ) : (
@@ -149,10 +184,10 @@ const DifficultyBars = ({ value }) => {
 
 // The bars with the level written next to them, so the information does not
 // depend on colour or shape alone.
-const Difficulty = ({ value }) => (
+const Difficulty = ({ value, t }) => (
   <span className={`inline-flex items-center gap-2 text-sm ${difficultyColor[value?.toLowerCase?.()] || 'text-muted'}`}>
     <DifficultyBars value={value} />
-    {value || 'Unknown'}
+    {DIFFICULTIES.includes(value) ? t(`difficulty.${value}`) : t('difficulty.unknown')}
   </span>
 );
 
@@ -185,7 +220,7 @@ const Choice = ({ name, value, selected, onSelect, ariaLabel, label, count, chil
 const choiceGrid = 'mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4';
 
 // One question as a card, for the grid on the start screen.
-const QuestionCard = ({ question, number, showTrack }) => {
+const QuestionCard = ({ question, number, showTrack, lang, t }) => {
   const titleId = useId();
   return (
     <li aria-labelledby={titleId} className="flex flex-col rounded-lg border border-line bg-panel p-4">
@@ -193,10 +228,10 @@ const QuestionCard = ({ question, number, showTrack }) => {
         <span className="font-mono text-sm tabular-nums text-muted" aria-hidden="true">
           {number}
         </span>
-        <Difficulty value={question.Difficulty} />
+        <Difficulty value={question.Difficulty} t={t} />
       </div>
       <h3 id={titleId} className="mt-3 break-words text-[0.95rem] font-normal leading-relaxed text-fg">
-        {renderInline(extractObjective(question.TestName))}
+        {renderInline(statement(question, lang))}
       </h3>
       {showTrack && question.Track && <p className="mt-auto pt-3 text-sm text-muted">{question.Track}</p>}
     </li>
@@ -205,8 +240,7 @@ const QuestionCard = ({ question, number, showTrack }) => {
 
 // One question as a list row. The left edge shows its state once it has been
 // checked: green when solved, red when not.
-const QuestionRow = ({ question, number, showResult, showTrack = false, failedLabel = 'Review needed' }) => {
-  const objective = extractObjective(question.TestName);
+const QuestionRow = ({ question, number, showResult, showTrack = false, failedLabel, lang, t }) => {
   const hasResult = showResult && typeof question.Passed === 'boolean';
   const titleId = useId();
   const edge = !hasResult ? 'border-l-transparent' : question.Passed ? 'border-l-pass' : 'border-l-fail';
@@ -221,20 +255,22 @@ const QuestionRow = ({ question, number, showResult, showTrack = false, failedLa
       </span>
       <div>
         <h3 id={titleId} className="break-words text-[0.95rem] font-normal leading-relaxed text-fg">
-          {renderInline(objective)}
+          {renderInline(statement(question, lang))}
         </h3>
         <p className="mt-1.5 flex flex-wrap items-center gap-x-3 text-sm">
-          <Difficulty value={question.Difficulty} />
+          <Difficulty value={question.Difficulty} t={t} />
           {showTrack && question.Track && <span className="text-muted">{question.Track}</span>}
-          {question.Advanced && <span className="text-muted">Extra scenario, not graded</span>}
+          {question.Advanced && <span className="text-muted">{t('extra')}</span>}
           {hasResult && (
             <span className={`font-semibold ${question.Passed ? 'text-pass' : 'text-fail'}`}>
-              {question.Passed ? 'Passed' : failedLabel}
+              {question.Passed ? t('passed') : failedLabel ?? t('review')}
             </span>
           )}
         </p>
         {hasResult && !question.Passed && question.Feedback && (
-          <p className="mt-1.5 text-sm leading-relaxed text-muted">{question.Feedback}</p>
+          <p className="mt-1.5 text-sm leading-relaxed text-muted" lang="en">
+            {question.Feedback}
+          </p>
         )}
       </div>
     </li>
@@ -249,6 +285,14 @@ const ErrorBanner = ({ message }) =>
   ) : null;
 
 function App() {
+  const [lang, setLang] = useState(initialLanguage);
+  const t = useMemo(() => translator(lang), [lang]);
+
+  useEffect(() => {
+    saveLanguage(lang);
+    document.documentElement.lang = lang;
+  }, [lang]);
+
   const [questions, setQuestions] = useState(FALLBACK_QUESTIONS);
   const [isFallback, setIsFallback] = useState(true);
   const [includeAdvanced, setIncludeAdvanced] = useState(false);
@@ -308,7 +352,7 @@ function App() {
     } catch (err) {
       const reason = err instanceof Error ? err.message : 'Unknown error';
       console.warn(`[KubeLearn] Unable to fetch questions: ${reason}`);
-      setError('Unable to sync the questions. Make sure the backend is running and try again.');
+      setError('error.sync');
       setQuestions(FALLBACK_QUESTIONS.filter(matching(track, difficulty)));
       setIsFallback(true);
     } finally {
@@ -333,7 +377,7 @@ function App() {
     } catch (err) {
       const reason = err instanceof Error ? err.message : 'Unknown error';
       console.warn(`[KubeLearn] Unable to check progress: ${reason}`);
-      setError('Unable to check your progress. Make sure the backend and the cluster are running and try again.');
+      setError('error.progress');
     } finally {
       setIsChecking(false);
     }
@@ -382,7 +426,7 @@ function App() {
     } catch (err) {
       const reason = err instanceof Error ? err.message : 'Unknown error';
       console.warn(`[KubeLearn] Unable to finish quiz: ${reason}`);
-      setError('Unable to finish the quiz. Confirm the backend is running and try again.');
+      setError('error.finish');
     } finally {
       setIsFinishing(false);
     }
@@ -413,14 +457,14 @@ function App() {
     };
   }, [quizStarted, quizFinished]);
 
-  // Before an attempt the list is a preview of the chosen track; during and
+  // Before an attempt the list is a preview of the chosen filters; during and
   // after it, the questions the backend evaluated.
   const available = catalog ?? FALLBACK_QUESTIONS;
   const preview = available.filter(matching(track, difficulty));
   const evaluatedQuestions = quizStarted ? questions : preview;
   const trackCount = (id) => available.filter(matching(id, difficulty)).length;
   const difficultyCount = (id) => available.filter(matching(track, id)).length;
-  const trackLabel = TRACKS.find((item) => item.id === track)?.label ?? track;
+  const trackLabel = (id) => (id === 'all' ? t('track.all') : id);
   const showExtras = track === 'all' || track === 'CKS';
   const displayedQuestions = useMemo(
     () => (includeAdvanced && showExtras ? [...evaluatedQuestions, ...ADVANCED_QUESTIONS] : evaluatedQuestions),
@@ -431,86 +475,97 @@ function App() {
   const passedCount = evaluatedQuestions.filter((q) => q.Passed).length;
   const progressPercent = evaluatedCount ? Math.round((passedCount / evaluatedCount) * 100) : 0;
   const numbered = evaluatedQuestions.map((question, index) => ({ question, number: index + 1 }));
+  const languageSwitcher = <LanguageSwitcher lang={lang} onChange={setLang} t={t} />;
 
-  // Start screen: what this is, one action, and the real question list.
+  // Start screen: what this is, the filters, one action, and the questions.
   if (!quizStarted) {
     return (
-      <main className="mx-auto max-w-[90rem] px-6 py-14 sm:py-20">
-        <h1 className="text-4xl font-semibold tracking-tight text-fg sm:text-5xl">KubeLearn</h1>
-        <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted">
-          Hands-on Kubernetes questions. Solve each one in your cluster from the built-in terminal, then check your
-          answers against the live cluster.
-        </p>
+      <main className="mx-auto max-w-[90rem] px-6 py-10 sm:py-14">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <h1>
+            <Logo />
+          </h1>
+          {languageSwitcher}
+        </div>
+        <p className="mt-6 max-w-2xl text-lg leading-relaxed text-muted">{t('tagline')}</p>
 
         <div className="mt-10 grid max-w-6xl gap-x-10 gap-y-6 lg:grid-cols-2">
           <fieldset className="min-w-0">
-            <legend className="text-sm text-muted">Track</legend>
+            <legend className="text-sm text-muted">{t('filter.track')}</legend>
             <div className={choiceGrid}>
-              {TRACKS.map((item) => (
+              {TRACKS.map((id) => (
                 <Choice
-                  key={item.id}
+                  key={id}
                   name="track"
-                  value={item.id}
-                  selected={item.id === track}
+                  value={id}
+                  selected={id === track}
                   onSelect={setTrack}
-                  ariaLabel={`${item.label} track, ${trackCount(item.id)} questions`}
-                  label={item.label}
-                  count={trackCount(item.id)}
+                  ariaLabel={t('aria.track', { label: trackLabel(id), count: trackCount(id) })}
+                  label={trackLabel(id)}
+                  count={trackCount(id)}
                 >
-                  {item.about}
+                  {t(`track.${id}.about`)}
                 </Choice>
               ))}
             </div>
           </fieldset>
 
           <fieldset className="min-w-0">
-            <legend className="text-sm text-muted">Difficulty</legend>
+            <legend className="text-sm text-muted">{t('filter.difficulty')}</legend>
             <div className={choiceGrid}>
-              {DIFFICULTIES.map((item) => (
+              {DIFFICULTIES.map((id) => (
                 <Choice
-                  key={item.id}
+                  key={id}
                   name="difficulty"
-                  value={item.id}
-                  selected={item.id === difficulty}
+                  value={id}
+                  selected={id === difficulty}
                   onSelect={setDifficulty}
-                  ariaLabel={`${item.label} difficulty, ${difficultyCount(item.id)} questions`}
-                  label={item.label}
-                  count={difficultyCount(item.id)}
+                  ariaLabel={t('aria.difficulty', { label: t(`difficulty.${id}`), count: difficultyCount(id) })}
+                  label={t(`difficulty.${id}`)}
+                  count={difficultyCount(id)}
                 >
-                  {item.id === 'all' ? 'Every level' : <DifficultyBars value={item.id} />}
+                  {id === 'all' ? t('difficulty.all.about') : <DifficultyBars value={id} />}
                 </Choice>
               ))}
             </div>
           </fieldset>
         </div>
-        {!catalog && (
-          <p className="mt-4 text-sm text-warn">
-            The backend is not answering, so only the built-in Core list is shown. Start it with make backend-start.
-          </p>
-        )}
+        {!catalog && <p className="mt-4 text-sm text-warn">{t('backendDown')}</p>}
 
         <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
           <button
             type="button"
             onClick={startQuiz}
             className={primaryButtonClasses}
-            aria-label="Start quiz simulation"
+            aria-label={t('aria.start')}
             disabled={evaluatedCount === 0}
           >
-            Start attempt with {evaluatedCount} questions
+            {t('start', { count: evaluatedCount })}
           </button>
           {lastAttempt && (
             <p className="text-sm text-muted">
-              Last attempt: {lastAttempt.score}% ({lastAttempt.passedQuestions} of {lastAttempt.totalQuestions}) in{' '}
-              {formatTime(lastAttempt.duration)}, {new Date(lastAttempt.completedAt).toLocaleString()}
+              {t('lastAttempt', {
+                score: lastAttempt.score,
+                passed: lastAttempt.passedQuestions,
+                total: lastAttempt.totalQuestions,
+                time: formatTime(lastAttempt.duration),
+                date: new Date(lastAttempt.completedAt).toLocaleString(lang),
+              })}
             </p>
           )}
         </div>
 
-        <h2 className="mt-16 text-lg font-semibold text-fg">The questions</h2>
+        <h2 className="mt-16 text-lg font-semibold text-fg">{t('questions')}</h2>
         <ol className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {numbered.map(({ question, number }) => (
-            <QuestionCard key={question.TestName} question={question} number={number} showTrack={track === 'all'} />
+            <QuestionCard
+              key={question.TestName}
+              question={question}
+              number={number}
+              showTrack={track === 'all'}
+              lang={lang}
+              t={t}
+            />
           ))}
         </ol>
       </main>
@@ -525,48 +580,47 @@ function App() {
 
     return (
       <main className="mx-auto max-w-5xl px-6 py-14">
-        <h1 className="text-lg font-semibold text-muted">Results overview</h1>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <h1 className="text-lg font-semibold text-muted">{t('results')}</h1>
+          {languageSwitcher}
+        </div>
         <div className="mt-4 flex flex-wrap items-end gap-x-10 gap-y-4">
           <p className={`text-7xl font-semibold leading-none tabular-nums ${passedOverall ? 'text-pass' : 'text-fg'}`}>
             {score}%
           </p>
           <div className="space-y-1 text-base">
             <p className={`font-semibold ${passedOverall ? 'text-pass' : 'text-warn'}`}>
-              {passedOverall ? 'Status: Passed' : 'Status: Keep practising'}
+              {passedOverall ? t('statusPassed') : t('statusKeep')}
             </p>
-            <p className="text-fg">
-              {passedCount} of {evaluatedCount} questions solved.
-            </p>
-            <p className="text-muted">
-              Time spent {formatTime(elapsedTime)}. The passing score is {PASS_THRESHOLD}%.
-            </p>
+            <p className="text-fg">{t('solvedOf', { passed: passedCount, total: evaluatedCount })}</p>
+            <p className="text-muted">{t('timeSpent', { time: formatTime(elapsedTime), threshold: PASS_THRESHOLD })}</p>
           </div>
         </div>
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <button type="button" onClick={startQuiz} className={primaryButtonClasses}>
-            Start another attempt
+            {t('again')}
           </button>
           <button type="button" onClick={resetQuiz} className={secondaryButtonClasses}>
-            Back to start
+            {t('back')}
           </button>
         </div>
 
         {unsolved.length > 0 && (
           <section className="mt-14">
-            <h2 className="text-lg font-semibold text-fg">Still to solve ({unsolved.length})</h2>
+            <h2 className="text-lg font-semibold text-fg">{t('stillToSolve', { count: unsolved.length })}</h2>
             <ol className="mt-4 border-t border-line">
               {unsolved.map(({ question, number }) => (
-                <QuestionRow key={question.TestName} question={question} number={number} showResult />
+                <QuestionRow key={question.TestName} question={question} number={number} showResult lang={lang} t={t} />
               ))}
             </ol>
           </section>
         )}
         {solved.length > 0 && (
           <section className="mt-14">
-            <h2 className="text-lg font-semibold text-fg">Solved ({solved.length})</h2>
+            <h2 className="text-lg font-semibold text-fg">{t('solved', { count: solved.length })}</h2>
             <ol className="mt-4 border-t border-line">
               {solved.map(({ question, number }) => (
-                <QuestionRow key={question.TestName} question={question} number={number} showResult />
+                <QuestionRow key={question.TestName} question={question} number={number} showResult lang={lang} t={t} />
               ))}
             </ol>
           </section>
@@ -580,12 +634,15 @@ function App() {
   return (
     <div className="flex min-h-screen flex-col lg:h-screen">
       <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line bg-panel px-5 py-3">
-        <p className="text-base font-semibold text-fg">
-          KubeLearn
-          {track !== 'all' && <span className="font-normal text-muted"> {trackLabel}</span>}
-          {difficulty !== 'all' && <span className="font-normal text-muted"> {difficulty}</span>}
+        <p className="flex items-center gap-2.5 text-base font-semibold text-fg">
+          <LogoMark />
+          <span>
+            KubeLearn
+            {track !== 'all' && <span className="font-normal text-muted"> {track}</span>}
+            {difficulty !== 'all' && <span className="font-normal text-muted"> {t(`difficulty.${difficulty}`)}</span>}
+          </span>
         </p>
-        <p className="font-mono text-base tabular-nums text-fg" role="timer" aria-label="Time elapsed">
+        <p className="font-mono text-base tabular-nums text-fg" role="timer" aria-label={t('aria.timer')}>
           {formatTime(elapsedTime)}
         </p>
         <div className="flex min-w-[14rem] flex-1 items-center gap-3">
@@ -594,10 +651,10 @@ function App() {
           </div>
           <p className="text-sm text-muted" role="status" aria-live="polite">
             {lastCheckedAt
-              ? `${passedCount} of ${evaluatedCount} solved, checked at ${lastCheckedAt.toLocaleTimeString()}`
+              ? t('checkedAt', { passed: passedCount, total: evaluatedCount, time: lastCheckedAt.toLocaleTimeString(lang) })
               : isFallback && !isLoading
-                ? 'Showing the built-in question list'
-                : `${evaluatedCount} questions, not checked yet`}
+                ? t('builtinList')
+                : t('notChecked', { count: evaluatedCount })}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -606,36 +663,37 @@ function App() {
             onClick={checkProgress}
             className={secondaryButtonClasses}
             disabled={isChecking || isFinishing || isLoading}
-            aria-label="Check progress on the challenges"
+            aria-label={t('aria.check')}
           >
-            {isChecking ? 'Checking…' : 'Check progress'}
+            {isChecking ? t('checking') : t('check')}
           </button>
           <button
             type="button"
             onClick={finishQuiz}
             className={primaryButtonClasses}
             disabled={isFinishing || isLoading}
-            aria-label="Finish current attempt"
+            aria-label={t('aria.finish')}
           >
-            {isFinishing ? 'Finishing…' : 'Finish attempt'}
+            {isFinishing ? t('finishing') : t('finish')}
           </button>
-          <button type="button" onClick={startQuiz} className={quietButtonClasses} disabled={isLoading} aria-label="Restart quiz simulation">
-            Restart
+          <button type="button" onClick={startQuiz} className={quietButtonClasses} disabled={isLoading} aria-label={t('aria.restart')}>
+            {t('restart')}
           </button>
-          <button type="button" onClick={resetQuiz} className={quietButtonClasses} aria-label="Reset quiz session">
-            Leave
+          <button type="button" onClick={resetQuiz} className={quietButtonClasses} aria-label={t('aria.leave')}>
+            {t('leave')}
           </button>
+          {languageSwitcher}
         </div>
       </header>
 
-      <ErrorBanner message={error} />
+      <ErrorBanner message={error ? t(error) : ''} />
 
       <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        <section className="min-h-0 border-line lg:overflow-y-auto lg:border-r" aria-label="Questions">
+        <section className="min-h-0 border-line lg:overflow-y-auto lg:border-r" aria-label={t('aria.questions')}>
           {isLoading ? (
-            <p className="px-5 py-6 text-sm text-muted">Loading questions…</p>
+            <p className="px-5 py-6 text-sm text-muted">{t('loading')}</p>
           ) : (
-            <ol aria-label="Kubernetes challenges">
+            <ol aria-label={t('aria.list')}>
               {displayedQuestions.map((question, index) => (
                 <QuestionRow
                   key={`${question.TestName}-${index}`}
@@ -643,7 +701,9 @@ function App() {
                   number={index + 1}
                   showResult={lastCheckedAt !== null}
                   showTrack={track === 'all'}
-                  failedLabel="Not solved yet"
+                  failedLabel={t('notSolved')}
+                  lang={lang}
+                  t={t}
                 />
               ))}
             </ol>
@@ -656,14 +716,14 @@ function App() {
                 className={quietButtonClasses}
                 aria-pressed={includeAdvanced}
               >
-                {includeAdvanced ? 'Hide extra CKS scenarios' : 'Show extra CKS scenarios (not graded)'}
+                {includeAdvanced ? t('hideExtras') : t('showExtras')}
               </button>
             </div>
           )}
         </section>
 
-        <section className="h-[70vh] min-h-0 border-t border-line lg:h-auto lg:border-t-0" aria-label="Terminal">
-          <TerminalPanel isVisible />
+        <section className="h-[70vh] min-h-0 border-t border-line lg:h-auto lg:border-t-0" aria-label={t('terminal.title')}>
+          <TerminalPanel isVisible t={t} />
         </section>
       </div>
     </div>
