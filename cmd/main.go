@@ -170,8 +170,8 @@ var evaluationTimeout = 20 * time.Second
 // evaluationTimeout passes. On failure it writes the error response and
 // returns false.
 //
-// The optional "track" query parameter (core, cks, ckne or all) limits the
-// evaluation to the questions of that track.
+// Two optional query parameters limit which questions are evaluated: "track"
+// (core, cks, ckne or all) and "difficulty" (easy, medium, hard or all).
 func evaluate(w http.ResponseWriter, r *http.Request, clients resources.Clients) ([]utils.Result, bool) {
 	track, ok := resources.ParseTrack(r.URL.Query().Get("track"))
 	if !ok {
@@ -179,10 +179,16 @@ func evaluate(w http.ResponseWriter, r *http.Request, clients resources.Clients)
 		return nil, false
 	}
 
+	difficulty, ok := resources.ParseDifficulty(r.URL.Query().Get("difficulty"))
+	if !ok {
+		http.Error(w, "unknown difficulty: use easy, medium, hard or all", http.StatusBadRequest)
+		return nil, false
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), evaluationTimeout)
 	defer cancel()
 
-	results, err := resources.Evaluate(ctx, clients, track)
+	results, err := resources.Evaluate(ctx, clients, resources.Filter{Track: track, Difficulty: difficulty})
 	if err == nil {
 		return results, true
 	}

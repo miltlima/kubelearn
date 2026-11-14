@@ -5,6 +5,7 @@ import App from './App';
 const jsonResponse = (body) => Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
 
 beforeEach(() => {
+  window.localStorage.clear();
   // The terminal panel opens a WebSocket as soon as the quiz starts.
   global.WebSocket = jest.fn(() => ({ close: jest.fn(), send: jest.fn() }));
   global.fetch = jest.fn();
@@ -149,9 +150,12 @@ describe('tracks', () => {
   ];
   const backend = (url) => {
     if (url.endsWith('/catalog')) return jsonResponse(catalog);
-    const track = new URL(url).searchParams.get('track');
+    const params = new URL(url).searchParams;
+    const track = params.get('track');
+    const level = params.get('difficulty');
     const results = catalog
       .filter((q) => !track || q.Track.toLowerCase() === track)
+      .filter((q) => !level || q.Difficulty.toLowerCase() === level)
       .map((q) => ({ ...q, Passed: true }));
     return url.includes('/finish') ? jsonResponse({ score: 100, results }) : jsonResponse(results);
   };
@@ -189,6 +193,35 @@ describe('tracks', () => {
     expect(global.fetch).toHaveBeenCalledWith('http://localhost:8083/finish?track=ckne');
   });
 
+  test('filters by difficulty, alone and combined with a track', async () => {
+    global.fetch.mockImplementation(backend);
+    render(<App />);
+    await screen.findByRole('heading', { name: /security task/i });
+
+    expect(screen.getByRole('radio', { name: 'Any difficulty, 4 questions' })).toBeChecked();
+    userEvent.click(screen.getByRole('radio', { name: 'Easy difficulty, 2 questions' }));
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.getByRole('heading', { name: /core task/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /network task one/i })).toBeInTheDocument();
+    // The track counts follow the chosen difficulty.
+    expect(screen.getByRole('radio', { name: 'CKS track, 0 questions' })).toBeInTheDocument();
+
+    userEvent.click(screen.getByRole('radio', { name: 'CKNE track, 1 questions' }));
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+
+    userEvent.click(screen.getByRole('button', { name: /start quiz simulation/i }));
+    await screen.findByRole('button', { name: /finish current attempt/i });
+    await waitFor(() =>
+      expect(global.fetch).toHaveBeenCalledWith('http://localhost:8083/questions?track=ckne&difficulty=easy'),
+    );
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(1));
+
+    userEvent.click(screen.getByRole('button', { name: /finish current attempt/i }));
+    expect(await screen.findByText('1 of 1 questions solved.')).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledWith('http://localhost:8083/finish?track=ckne&difficulty=easy');
+  });
+
   test('explains that only the built-in list is available without the backend', async () => {
     global.fetch.mockImplementation(() => Promise.reject(new Error('connection refused')));
     render(<App />);
@@ -197,5 +230,34 @@ describe('tracks', () => {
     expect(screen.getByRole('radio', { name: 'Core track, 26 questions' })).toBeInTheDocument();
     userEvent.click(screen.getByRole('radio', { name: 'CKS track, 0 questions' }));
     expect(screen.getByRole('button', { name: /start quiz simulation/i })).toBeDisabled();
+  });
+});
+
+describe('languages', () => {
+  test('switches the interface and the questions to Portuguese and remembers the choice', async () => {
+    const { unmount } = render(<App />);
+    expect(screen.getByRole('button', { name: 'English' })).toHaveAttribute('aria-pressed', 'true');
+
+    userEvent.click(screen.getByRole('button', { name: 'Português' }));
+
+    expect(await screen.findByRole('button', { name: 'Iniciar tentativa' })).toHaveTextContent('Iniciar tentativa com 26 questões');
+    expect(screen.getByRole('heading', { name: /crie um namespace chamado\s*europe/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Dificuldade Fácil, 5 questões' })).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe('pt');
+
+    unmount();
+    render(<App />);
+    expect(screen.getByRole('button', { name: 'Português' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('heading', { name: 'As questões' })).toBeInTheDocument();
+  });
+
+  test('offers Spanish and shows the logo', async () => {
+    render(<App />);
+
+    userEvent.click(screen.getByRole('button', { name: 'Español' }));
+
+    expect(await screen.findByRole('button', { name: 'Iniciar intento' })).toHaveTextContent('Iniciar intento con 26 preguntas');
+    expect(screen.getByRole('heading', { name: /crea un namespace llamado\s*europe/i })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'KubeLearn' })).toHaveAttribute('src', expect.stringContaining('kubelearn_logo.png'));
   });
 });

@@ -338,3 +338,22 @@ func TestCatalogEndpointNeedsNoCluster(t *testing.T) {
 		t.Errorf("last entry track = %q, want CKNE", entries[len(entries)-1].Track)
 	}
 }
+
+func TestQuestionsCanBeLimitedToADifficulty(t *testing.T) {
+	rec := httptest.NewRecorder()
+	getQuestions(rec, httptest.NewRequest(http.MethodGet, "/questions?track=cks&difficulty=hard", nil), emptyCluster())
+
+	var results []utils.Result
+	if err := json.Unmarshal(rec.Body.Bytes(), &results); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(results) != 4 {
+		t.Errorf("got %d questions for CKS + hard, want 4", len(results))
+	}
+
+	rec = httptest.NewRecorder()
+	getQuestions(rec, httptest.NewRequest(http.MethodGet, "/questions?difficulty=extreme", nil), emptyCluster())
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("unknown difficulty: status %d, want 400", rec.Code)
+	}
+}
