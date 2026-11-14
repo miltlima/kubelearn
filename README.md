@@ -10,130 +10,140 @@
 
 ## Overview
 
-KubeLearn is a tool designed to help users test and expand their knowledge of Kubernetes. This project includes both a backend, which runs various Kubernetes-related tasks, and a frontend, which provides a user interface for interacting with the tool.
+KubeLearn helps you test and expand your Kubernetes knowledge. It provisions a local [kind](https://kind.sigs.k8s.io/) cluster, gives you 26 hands-on tasks, and checks your cluster to tell you which ones you solved.
+
+It has two parts:
+
+- **Backend** (Go): inspects the cluster and reports which questions pass. It also serves the in-browser terminal.
+- **Frontend** (React): shows the questions, a timer, your score, and a terminal to run `kubectl`.
 
 ## Project Structure
 
-The project is organized into the following directories:
-
 ```bash
 .
-├── cmd
-│   └── main.go                # Backend Go application
-├── kubelearn-frontend         # Frontend React application
-│   ├── postcss.config.js
-│   ├── src
-│   │   ├── App.js
-│   │   ├── App.test.js
-│   │   ├── index.js
-│   │   ├── reportWebVitals.js
-│   │   └── setupTests.js
-│   └── tailwind.config.js
-├── makefile                   # Makefile for managing the project
-└── pkg
-    ├── k8s                    # Kubernetes-related utilities
-    │   └── client.go
-    ├── resources              # Contains Kubernetes-related questions
-    │   ├── easy
-    │   ├── hard
-    │   └── medium
-    └── utils                  # Additional utilities
+├── cmd                        # Backend entry point (HTTP API and terminal)
+├── pkg
+│   ├── k8s                    # Kubernetes client setup
+│   ├── resources              # Question checkers, grouped by difficulty
+│   │   ├── easy
+│   │   ├── medium
+│   │   └── hard
+│   └── utils                  # Shared helpers
+├── kubelearn-frontend         # React application
+├── config                     # Terraform configuration for the kind cluster
+├── manifests                  # Lab resources applied to the cluster
+├── manifests_examples         # Example answers
+└── Makefile                   # Automation for the whole project
 ```
+
 ## Prerequisites
 
-To run the project locally, you need to have the following installed:
-
-- Go (Golang)
+- Go 1.21 or newer
 - Node.js and npm
 - Terraform
-- Kubernetes (kubectl)
-- Kind (for local Kubernetes clusters)
+- kubectl
+- kind (and Docker, which kind needs)
+- make
+
+## Quick Start
+
+1. Provision the cluster and start the backend and frontend:
+
+   ```sh
+   make kubelearn
+   ```
+
+2. Apply the lab resources that some questions depend on:
+
+   ```sh
+   make manifests-apply
+   ```
+
+3. Open the frontend at `http://localhost:3000`. The backend API listens on `http://127.0.0.1:8083`.
+
+4. When you are done, stop the services:
+
+   ```sh
+   make stop-kubelearn
+   ```
+
+   To delete the cluster as well, run `make terraform-destroy`.
 
 ## Makefile Commands
 
-The `Makefile` provides several commands to manage the project efficiently. Below is a summary of the available targets:
+Run `make help` to list every target and variable.
 
-### Setup and Run KubeLearn
+| Target | What it does |
+|--------|--------------|
+| `kubelearn` | Provision the cluster, switch the kubectl context, start backend and frontend |
+| `stop-kubelearn` | Stop backend and frontend |
+| `clean` | Stop the services and remove the backend binary and logs |
+| `infra-up` | Provision the cluster and switch the kubectl context |
+| `terraform-init` / `terraform-plan` / `terraform-apply` / `terraform-destroy` | Manage the kind cluster with Terraform |
+| `kube-context` | Switch kubectl to the KubeLearn context |
+| `manifests-apply` | Apply every manifest in `manifests/` |
+| `manifests-delete` | Delete the resources from `manifests/` |
+| `manifests-lint` | Validate the manifests with a client-side dry run |
+| `backend-build` / `backend-start` / `backend-stop` | Build, start, or stop the backend |
+| `frontend-install` / `frontend-start` / `frontend-stop` | Install dependencies, start, or stop the frontend |
 
-This command initializes Terraform, sets up the backend and frontend, and starts the services.
+Variables you can override, for example `make kubelearn LOG_DIR=/tmp/kubelearn`:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `KUBE_CONTEXT` | `kind-kubelearn` | kubectl context to switch to |
+| `MANIFESTS_DIR` | `manifests` | Directory with the lab manifests |
+| `TERRAFORM_DIR` | `config` | Terraform configuration directory |
+| `FRONTEND_DIR` | `kubelearn-frontend` | Frontend directory |
+| `BACKEND_BIN` | `bin/kubelearn` | Where the backend binary is built |
+| `LOG_DIR` | `logs` | Runtime logs and PID files |
+
+## Backend
+
+The backend finds the cluster the same way `kubectl` does: the files in the `KUBECONFIG` environment variable, or `~/.kube/config`, using the current context. The cluster must exist before the backend starts.
+
+`/questions` and `/finish` give the cluster 20 seconds to answer all checks; after that they return `504` instead of hanging.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/questions` | GET | List the questions and whether each one currently passes |
+| `/finish` | GET | Return the score as a percentage |
+| `/start` | GET | Mark the quiz as started |
+| `/setup` | POST | Run `make infra-up` and `make manifests-apply` in the background |
+| `/terminal` | WebSocket | Run shell commands typed in the frontend terminal |
+
+Environment variables:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `KUBELEARN_ALLOWED_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | Comma-separated browser origins allowed to call the API and open the terminal |
+| `KUBELEARN_ROOT` | working directory | Directory with the project Makefile, used by `/setup` |
+
+### Security
+
+The terminal endpoint runs any shell command it receives, with your user's permissions. For that reason the backend listens on `127.0.0.1` only and rejects requests from origins that are not in `KUBELEARN_ALLOWED_ORIGINS`. Do not expose port 8083 to a network.
+
+## Development
 
 ```sh
-make Kubelearn
+go test ./...                                              # backend tests
+go vet ./...
+npm --prefix kubelearn-frontend test -- --watchAll=false   # frontend tests
 ```
 
-### Stop KubeLearn
+The questions live in a single registry, `pkg/resources/registry.go`. To add one, write its checker under `pkg/resources/<difficulty>/` and append it to `Checks`.
 
-This command stops the backend and frontend services.
-
-```sh
-make stopKubelearn
-```
-
-### Terraform Commands
-
-- **init**: Initializes the Terraform configuration.
-
-  ```sh
-  make init
-  ```
-
-- **apply**: Applies the Terraform configuration.
-
-  ```sh
-  make apply
-  ```
-
-- **destroy**: Destroys the Terraform-managed infrastructure.
-
-  ```sh
-  make destroy
-  ```
-
-### Kubernetes Manifest Management
-
-- **all**: Installs all Kubernetes manifests from the `manifests` directory.
-
-  ```sh
-  make all
-  ```
-
-- **clean**: Deletes all installed Kubernetes resources.
-
-  ```sh
-  make clean
-  ```
-
-- **check-syntax**: Validates the syntax of all Kubernetes manifests without applying them.
-
-  ```sh
-  make check-syntax
-  ```
-
-## Running the Project
-
-1. **Setup Environment**: Run `make Kubelearn` to initialize Terraform and start both the backend and frontend.
-
-2. **Access the Application**: After running the setup, the frontend will be available at `http://localhost:3000` by default, and the backend API at `http://localhost:8083`.
-
-3. **Stop the Services**: Run `make stopKubelearn` to stop the backend and frontend services.
-
-## Additional Information
-
-- Logs for the backend and frontend are stored in `backend.log` and `frontend.log`, respectively.
-- Ensure that your Kubernetes environment is properly configured before running the application.
+Every push to `main` and every pull request runs the build, formatting checks, and tests for both parts (see `.github/workflows/ci.yaml`). Releases are built by GoReleaser when a tag is pushed (see `.github/workflows/release.yaml`).
 
 ## Troubleshooting
 
-- If Terraform fails to initialize, ensure that your Terraform installation is correct and that the `config` directory contains valid configurations.
-- If the frontend doesn't start, verify that all npm dependencies are installed correctly.
-
----
-
-This documentation should cover the basic setup and usage of the KubeLearn project. For more detailed instructions or troubleshooting, please refer to the specific sections in this document.
-- If you encounter issues with Kubernetes resources, check the logs of the respective pods using `kubectl logs <pod-name>`. 
-
-You can use this documentation as a starting point and expand it further as needed. It covers the basic commands, project structure, and steps to run the project locally.
-
+- **Logs**: backend and frontend output go to `logs/backend.log` and `logs/frontend.log`.
+- **Backend exits at startup**: it could not load a kubeconfig (`KUBECONFIG` or `~/.kube/config`). Run `make infra-up` first.
+- **Questions fail to load with a timeout**: the cluster is not answering. Check `kubectl get nodes`.
+- **Terminal shows "Connection error"**: check that the backend is running and that the frontend origin is in `KUBELEARN_ALLOWED_ORIGINS` (the dev server may pick a port other than 3000 if it is busy).
+- **Context `kind-kubelearn` not found**: the cluster does not exist. Run `make infra-up`.
+- **Terraform fails to initialize**: check your Terraform installation and that Docker is running.
+- **Frontend does not start**: run `make frontend-install` and check `logs/frontend.log`.
 
 ## Answer the questions below
 
@@ -144,7 +154,7 @@ You can use this documentation as a starting point and expand it further as need
 | 3         | Create a new deployment called `redis` with image `redis:alpine` in `latam` namespace, and create a service called `redis-service` with port `6379` in same namespace. |
 | 4         | Create a namespace called `europe`                                                                                                                                     |
 | 5         | Create a configmap `europe-configmap` with data `France=Paris`                                                                                                         |
-| 6         | Create a pod `thsoot` with label `country=china`, `amazon/amazon-ecs-network-sidecar:latest` image and namespace `asia`                                                |
+| 6         | Create a pod `tshoot` with label `country=china`, `amazon/amazon-ecs-network-sidecar:latest` image and namespace `asia`                                                |
 | 7         | Create a persistent volume `unicorn-pv` with capacity `1Gi` and access mode `ReadWriteMany` and host path `/tmp/data`                                                  |
 | 8         | Create a persistent volume claim `unicorn-pvc` with capacity `400Mi` and access mode `ReadWriteMany`                                                                   |
 | 9         | Create a pod `webserver` in `public` namespace with `nginx:alpine` image and a volume mount `/usr/share/nginx/html` and a persistent volume claim `unicorn-pvc`        |

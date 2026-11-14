@@ -112,8 +112,7 @@ backend-build: ## Build backend binary
 
 backend-start: backend-build logs-dir ## Start backend service in the background
 	@echo "Starting backend (logging to $(LOG_DIR)/backend.log)"
-	@nohup ./$(BACKEND_BIN) > $(LOG_DIR)/backend.log 2>&1 &
-	@echo $$! > $(LOG_DIR)/backend.pid
+	@nohup ./$(BACKEND_BIN) > $(LOG_DIR)/backend.log 2>&1 & echo $$! > $(LOG_DIR)/backend.pid
 
 backend-stop: ## Stop backend service if running
 	@echo "Stopping backend"
@@ -130,18 +129,16 @@ frontend-install: ## Install frontend dependencies
 
 frontend-start: frontend-install logs-dir ## Start frontend dev server in the background
 	@echo "Starting frontend (logging to $(LOG_DIR)/frontend.log)"
-	@nohup $(NPM) run start > $(LOG_DIR)/frontend.log 2>&1 &
-	@echo $$! > $(LOG_DIR)/frontend.pid
+	@nohup $(NPM) run start > $(LOG_DIR)/frontend.log 2>&1 & echo $$! > $(LOG_DIR)/frontend.pid
 
 frontend-stop: ## Stop frontend dev server if running
 	@echo "Stopping frontend"
-	@if [ -f $(LOG_DIR)/frontend.pid ]; then \
+	@if [ -s $(LOG_DIR)/frontend.pid ]; then \
 		kill "$$(cat $(LOG_DIR)/frontend.pid)" >/dev/null 2>&1 || true; \
-		rm -f $(LOG_DIR)/frontend.pid; \
-	else \
-		pkill -f "$(FRONTEND_DIR)" >/dev/null 2>&1 || true; \
-		pkill -f "react-scripts start" >/dev/null 2>&1 || true; \
 	fi
+	@rm -f $(LOG_DIR)/frontend.pid
+	@# npm does not always pass the signal on, so also stop this project's dev server process.
+	@pkill -f "$(FRONTEND_DIR)/node_modules/react-scripts" >/dev/null 2>&1 || true
 
 kube-context: ## Switch kubectl to the KubeLearn cluster context
 	@echo "Switching kubectl context to '$(KUBE_CONTEXT)'"

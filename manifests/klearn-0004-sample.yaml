@@ -1,7 +1,15 @@
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: shield
+spec: {}
+status: {}
+---
+apiVersion: v1
 kind: Pod
 metadata:
   name: mark50
+  namespace: shield
   labels:
     name: mark50
 spec:
