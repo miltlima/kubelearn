@@ -27,6 +27,7 @@ KubeLearn is a hands-on Kubernetes practice lab that runs on your machine. It pr
 - **Instant feedback.** Check your progress at any time; every unsolved task says what is missing, for example "Replicas is 1, expected 5".
 - **Three tracks.** Core (CKA and CKAD level), CKS (security) and CKNE (networking), filterable by difficulty.
 - **Three languages.** The interface and the questions are available in English, Portuguese and Spanish.
+- **One binary.** Download it, run `kubelearn up` and `kubelearn`. It only needs Docker, kind and kubectl.
 - **Local and free.** Nothing leaves your machine, and there is no account or time limit.
 
 <p align="center">
@@ -37,6 +38,8 @@ It has two parts:
 
 - **Backend** (Go): checks the cluster for each question and serves the in-browser terminal.
 - **Frontend** (React): lists the questions, runs the attempt timer, and gives you a terminal next to them.
+
+Releases ship both as one binary.
 
 ## Contents
 
@@ -71,44 +74,59 @@ The frontend also lists a few extra CKS scenarios from these areas. They are mar
 
 ## Prerequisites
 
-- Go 1.21 or newer
-- Node.js and npm
-- Terraform
-- kubectl
-- kind, and Docker to run it
-- make
+- [Docker](https://docs.docker.com/get-docker/), running
+- [kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
+- [kubectl](https://kubernetes.io/docs/tasks/tools/)
+
+That is all you need to run KubeLearn. Building it from source also needs Go 1.21 or newer, Node.js and make.
 
 ## Quick start
 
-1. Provision the cluster and start the backend and frontend:
+KubeLearn is a single program: it creates the lab cluster and serves the web interface, with nothing else to install.
+
+1. Download the binary for your system from the [latest release](https://github.com/miltlima/kubelearn/releases/latest), make it executable and put it in your `PATH` as `kubelearn`. For example, on an Apple Silicon Mac:
 
    ```sh
-   make kubelearn
+   curl -L -o kubelearn https://github.com/miltlima/kubelearn/releases/latest/download/kubelearn_darwin_arm64
+   chmod +x kubelearn
+   sudo mv kubelearn /usr/local/bin/
    ```
 
-2. Apply the lab resources the questions depend on:
+   The file names follow `kubelearn_<system>_<architecture>`; see the release page for the others. On macOS, if the system refuses to open a downloaded binary, allow it with `xattr -d com.apple.quarantine /usr/local/bin/kubelearn`.
+
+2. Create the lab cluster. This creates a three-node kind cluster named `kubelearn`, switches your kubectl context to it, and applies the lab resources:
 
    ```sh
-   make manifests-apply
+   kubelearn up
    ```
 
-3. Install the Gateway API, used by CKNE questions 51 to 54 (needs internet access):
+3. Start KubeLearn. It opens `http://127.0.0.1:8083` in your browser:
 
    ```sh
-   make gateway-api-install
+   kubelearn
    ```
 
-4. Open the frontend at `http://localhost:3000`. The backend API listens on `http://127.0.0.1:8083`.
-
-5. When you are done, stop the services:
+4. When you are done, stop it with Ctrl+C. To delete the cluster:
 
    ```sh
-   make stop-kubelearn
+   kubelearn down
    ```
 
-   To delete the cluster as well, run `make terraform-destroy`.
+`kubelearn up` switches your kubectl context to `kind-kubelearn`. Switch back with `kubectl config use-context <name>` when you return to another cluster. KubeLearn checks your answers, and runs the terminal commands, against the current kubectl context, and warns at startup if that is not the lab cluster.
 
-`make infra-up` switches your kubectl context to `kind-kubelearn`. Switch back with `kubectl config use-context <name>` when you return to another cluster.
+Installing the Gateway API (used by questions 51 to 54) needs internet access. Without it the rest of the lab still works; run `kubelearn up` again when you are online.
+
+The built-in terminal runs commands through `sh`, so on Windows use KubeLearn from WSL.
+
+### From source
+
+```sh
+git clone https://github.com/miltlima/kubelearn.git
+cd kubelearn
+make build          # builds bin/kubelearn with the web interface embedded
+./bin/kubelearn up
+./bin/kubelearn
+```
 
 ## Using the app
 
@@ -122,22 +140,21 @@ Example answers for the CKS and CKNE tracks are in `manifests_examples/cks-solut
 
 ## Makefile commands
 
-Run `make help` to list every target and variable.
+The Makefile is for working on KubeLearn itself. Run `make help` to list every target and variable.
 
 | Target | What it does |
 |--------|--------------|
-| `kubelearn` | Provision the cluster, switch the kubectl context, start backend and frontend |
+| `build` | Build the complete binary, with the web interface embedded |
+| `kubelearn` | Development mode: create the lab cluster, then start the backend and the interface dev server on `http://localhost:3000` |
 | `stop-kubelearn` | Stop backend and frontend |
 | `clean` | Stop the services and remove the backend binary and logs |
-| `infra-up` | Provision the cluster and switch the kubectl context |
-| `terraform-init`, `terraform-plan`, `terraform-apply`, `terraform-destroy` | Manage the kind cluster with Terraform |
-| `kube-context` | Switch kubectl to the KubeLearn context |
+| `cluster-up`, `cluster-down` | Create or delete the lab cluster (same as `kubelearn up` and `kubelearn down`) |
 | `manifests-apply` | Apply every manifest in `manifests/` |
 | `manifests-delete` | Delete the resources from `manifests/` |
 | `manifests-lint` | Validate the manifests with a client-side dry run |
 | `gateway-api-install` | Install the Gateway API CRDs and the lab gateway class |
-| `backend-build`, `backend-start`, `backend-stop` | Build, start, or stop the backend |
-| `frontend-install`, `frontend-start`, `frontend-stop` | Install dependencies, start, or stop the frontend |
+| `backend-build`, `backend-start`, `backend-stop` | Build, start, or stop the backend without the embedded interface |
+| `frontend-install`, `frontend-start`, `frontend-stop` | Install dependencies, start, or stop the interface dev server |
 
 Variables you can override, for example `make kubelearn LOG_DIR=/tmp/kubelearn`:
 
@@ -146,7 +163,6 @@ Variables you can override, for example `make kubelearn LOG_DIR=/tmp/kubelearn`:
 | `KUBE_CONTEXT` | `kind-kubelearn` | kubectl context to switch to |
 | `MANIFESTS_DIR` | `manifests` | Directory with the lab manifests |
 | `GATEWAY_API_VERSION` | `v1.2.1` | Gateway API release to install |
-| `TERRAFORM_DIR` | `config` | Terraform configuration directory |
 | `FRONTEND_DIR` | `kubelearn-frontend` | Frontend directory |
 | `BACKEND_BIN` | `bin/kubelearn` | Where the backend binary is built |
 | `LOG_DIR` | `logs` | Runtime logs and PID files |
@@ -163,7 +179,8 @@ The backend finds the cluster the same way `kubectl` does: the files in the `KUB
 | `/questions` | GET | Evaluate the questions and return each one with its result and feedback |
 | `/finish` | GET | Evaluate the questions and return the score (percentage) and the results |
 | `/start` | GET | Mark the attempt as started |
-| `/setup` | POST | Run `make infra-up`, `make manifests-apply` and `make gateway-api-install` in the background |
+| `/setup` | POST | Create the lab cluster and apply the lab resources in the background (same as `kubelearn up`) |
+| any other path | GET | The web interface, in a build that embeds it |
 | `/terminal` | WebSocket | Run shell commands typed in the frontend terminal |
 
 `/questions` and `/finish` accept two optional filters, which can be combined: `track` (`core`, `cks`, `ckne` or `all`) and `difficulty` (`easy`, `medium`, `hard` or `all`). For example, `/questions?track=cks&difficulty=hard`. They give the cluster 20 seconds to answer all checks, then return `504` instead of hanging.
@@ -172,8 +189,7 @@ The backend finds the cluster the same way `kubectl` does: the files in the `KUB
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `KUBELEARN_ALLOWED_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | Comma-separated browser origins allowed to call the API and open the terminal |
-| `KUBELEARN_ROOT` | working directory | Directory with the project Makefile, used by `/setup` |
+| `KUBELEARN_ALLOWED_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | Comma-separated browser origins allowed to call the API and open the terminal, besides the interface served by KubeLearn itself |
 
 ### Security
 
@@ -183,18 +199,18 @@ The terminal endpoint runs any shell command it receives, with your user's permi
 
 ```text
 .
-├── cmd                        # Backend entry point (HTTP API and terminal)
+├── cmd                        # The kubelearn program: commands, HTTP API and terminal
 ├── pkg
 │   ├── k8s                    # Kubernetes client setup
+│   ├── lab                    # Creates and deletes the kind cluster
 │   ├── resources              # Question registry and checkers
 │   │   ├── easy, medium, hard # Core track, grouped by difficulty
 │   │   ├── cks                # Security track
 │   │   └── ckne               # Networking track
 │   └── utils                  # Shared helpers and feedback reports
 ├── kubelearn-frontend         # React application
-├── config                     # Terraform configuration for the kind cluster
-├── manifests                  # Lab resources applied to the cluster
-│   └── addons                 # Applied by gateway-api-install
+├── manifests                  # Lab resources, compiled into the binary
+│   └── addons                 # Applied after the Gateway API is installed
 ├── manifests_examples         # Example answers
 └── Makefile                   # Automation for the whole project
 ```
@@ -212,7 +228,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute. To add a question:
 1. Write its checker in the package of its track under `pkg/resources/`. Use `utils.Report` to collect the reasons it is not solved.
 2. Append it to `Questions` in `pkg/resources/registry.go` with its track. The position defines the question number.
 3. Add the objects that solve it to the fixtures in `pkg/resources/checks_test.go`.
-4. If it needs lab resources, add them to a file in `manifests/`.
+4. If it needs lab resources, add them to a file in `manifests/`. They are compiled into the binary.
 5. Add its Portuguese and Spanish statements to `kubelearn-frontend/src/i18n.js`.
 
 Every push to `main` and every pull request runs the build, formatting checks, and tests for both parts (see `.github/workflows/ci.yaml`). Releases are built by GoReleaser when a tag is pushed (see `.github/workflows/release.yaml`).
@@ -221,16 +237,17 @@ Every push to `main` and every pull request runs the build, formatting checks, a
 
 | Symptom | What to do |
 |---------|------------|
-| Backend exits at startup | It could not load a kubeconfig (`KUBECONFIG` or `~/.kube/config`). Run `make infra-up` first. |
-| Start screen shows only the Core list | The backend is not answering. Run `make backend-start` and check `logs/backend.log`. |
+| `kubelearn` exits at startup | It could not load a kubeconfig (`KUBECONFIG` or `~/.kube/config`). Run `kubelearn up` first. |
+| Start screen shows only the Core list | The backend is not answering. In development, run `make backend-start` and check `logs/backend.log`. |
 | Questions fail to load with a timeout | The cluster is not answering. Check `kubectl get nodes`. |
 | Terminal shows "Connection error" | Check that the backend is running and that the frontend origin is in `KUBELEARN_ALLOWED_ORIGINS`. The dev server may pick a port other than 3000 if it is busy. |
-| Questions 51 to 54 report "Gateway ... not found" after you created it | The Gateway API is not installed. Run `make gateway-api-install`. |
-| Context `kind-kubelearn` not found | The cluster does not exist. Run `make infra-up`. |
-| Terraform fails to initialize | Check your Terraform installation and that Docker is running. |
-| Frontend does not start | Run `make frontend-install` and check `logs/frontend.log`. |
+| Questions 51 to 54 report "Gateway ... not found" after you created it | The Gateway API is not installed. Run `kubelearn up` again while online. |
+| Context `kind-kubelearn` not found | The cluster does not exist. Run `kubelearn up`. |
+| `kubelearn up` fails to create the cluster | Check that Docker is running and that `kind` is installed. |
+| "cannot listen on 127.0.0.1:8083" | KubeLearn, or another program, is already using the port. Stop it first. |
+| The dev server does not start | Run `make frontend-install` and check `logs/frontend.log`. |
 
-Backend and frontend output go to `logs/backend.log` and `logs/frontend.log`.
+In development (`make kubelearn`), backend and frontend output go to `logs/backend.log` and `logs/frontend.log`.
 
 ## Questions
 

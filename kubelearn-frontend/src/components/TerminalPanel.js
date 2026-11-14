@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { translator } from '../i18n';
+import { terminalURL } from '../config';
 
 const STATUS = {
   CONNECTING: 'connecting',
@@ -40,7 +41,7 @@ const TerminalPanel = ({ isVisible, t = english }) => {
 
     let ws;
     try {
-      ws = new WebSocket('ws://localhost:8083/terminal');
+      ws = new WebSocket(terminalURL());
     } catch (connectionError) {
       console.warn('[KubeLearn] Unable to create terminal WebSocket:', connectionError);
       setStatus(STATUS.ERROR);

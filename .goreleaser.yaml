@@ -1,11 +1,19 @@
 # Documentation: https://goreleaser.com
 version: 2
 
+before:
+  hooks:
+  # The web interface is compiled into the binary (see frontend_embed.go).
+  - npm --prefix kubelearn-frontend ci
+  - npm --prefix kubelearn-frontend run build
+
 builds:
 - main: ./cmd
   binary: kubelearn
   env:
   - CGO_ENABLED=0
+  tags:
+  - embed
   goos:
   - linux
   - darwin
@@ -14,13 +22,16 @@ builds:
   - amd64
   - arm64
   - arm
-  ldflags: -s -w
+  ldflags: -s -w -X main.version={{ .Version }}
 
 checksum:
   name_template: 'checksums.txt'
 
 archives:
-- formats: [binary]
+# No version in the file name, so the "latest release" download links in the
+# README keep working from one release to the next.
+- name_template: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+  formats: [binary]
   format_overrides:
   - goos: windows
     formats: [zip]

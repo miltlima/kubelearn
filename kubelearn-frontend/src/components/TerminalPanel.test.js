@@ -51,3 +51,9 @@ test('shows identical consecutive outputs from different commands', () => {
 
   expect(screen.getAllByText('No resources found')).toHaveLength(2);
 });
+
+test('connects to the backend terminal address', () => {
+  openTerminal();
+
+  expect(global.WebSocket).toHaveBeenCalledWith('ws://localhost:8083/terminal');
+});

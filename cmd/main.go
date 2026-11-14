@@ -23,17 +23,16 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"kubelearn/pkg/k8s"
+	"kubelearn"
+	"kubelearn/pkg/lab"
 	"kubelearn/pkg/resources"
 	"kubelearn/pkg/utils"
 
 	"github.com/gorilla/websocket"
-	"k8s.io/client-go/dynamic"
 )
 
 // listenAddr is loopback-only: the /terminal endpoint runs shell commands, so
@@ -41,8 +40,8 @@ import (
 const listenAddr = "127.0.0.1:8083"
 
 // allowedOrigins holds the browser origins allowed to call the API and open
-// the terminal WebSocket. Override the default (the local frontend) with a
-// comma-separated list in KUBELEARN_ALLOWED_ORIGINS.
+// the terminal WebSocket: the interface served by this binary, plus the
+// development server or the comma-separated list in KUBELEARN_ALLOWED_ORIGINS.
 var allowedOrigins = parseAllowedOrigins(os.Getenv("KUBELEARN_ALLOWED_ORIGINS"))
 
 func parseAllowedOrigins(raw string) map[string]bool {
@@ -57,6 +56,10 @@ func parseAllowedOrigins(raw string) map[string]bool {
 		origins["http://localhost:3000"] = true
 		origins["http://127.0.0.1:3000"] = true
 	}
+	// The interface embedded in this binary, under both names of the
+	// loopback address.
+	origins["http://"+listenAddr] = true
+	origins["http://localhost"+listenAddr[strings.LastIndex(listenAddr, ":"):]] = true
 	return origins
 }
 
@@ -71,51 +74,21 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: originAllowed,
 }
 
-// setupTargets are the Makefile targets run by /setup, in order: provision
-// the cluster and switch the kubectl context, apply the lab manifests, then
-// install the Gateway API used by the networking questions.
-var setupTargets = []string{"infra-up", "manifests-apply", "gateway-api-install"}
-
 // setupRunning guards against overlapping /setup runs.
 var setupRunning atomic.Bool
 
-// runMakeCommand runs a Makefile target in dir and logs the output.
-// It is a variable so tests can replace it.
-var runMakeCommand = func(dir, target string) error {
-	cmd := exec.Command("make", target)
-	cmd.Dir = dir
-	cmd.Stdout = log.Writer()
-	cmd.Stderr = log.Writer()
-	return cmd.Run()
+// provisionLab creates the cluster and applies the lab resources. It is a
+// variable so tests can replace it.
+var provisionLab = func(ctx context.Context) error {
+	return lab.New(kubelearn.Manifests(), log.Writer()).Up(ctx)
 }
 
-// projectRoot returns the directory holding the project Makefile: the
-// KUBELEARN_ROOT environment variable, or the working directory.
-func projectRoot() (string, error) {
-	root := os.Getenv("KUBELEARN_ROOT")
-	if root == "" {
-		root = "."
-	}
-	for _, name := range []string{"Makefile", "makefile"} {
-		if info, err := os.Stat(filepath.Join(root, name)); err == nil && !info.IsDir() {
-			return root, nil
-		}
-	}
-	return "", fmt.Errorf("no Makefile found in %q: start the backend from the repository root or set KUBELEARN_ROOT", root)
-}
-
-// setupEnvironment provisions the lab in the background using the Makefile.
-// It only accepts POST, since it changes infrastructure.
+// setupEnvironment provisions the lab in the background. It only accepts
+// POST, since it changes infrastructure.
 func setupEnvironment(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	root, err := projectRoot()
-	if err != nil {
-		log.Printf("Cannot start environment setup: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if !setupRunning.CompareAndSwap(false, true) {
@@ -126,11 +99,9 @@ func setupEnvironment(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer setupRunning.Store(false)
 		log.Println("Starting environment setup...")
-		for _, target := range setupTargets {
-			if err := runMakeCommand(root, target); err != nil {
-				log.Printf("Environment setup failed at 'make %s': %v", target, err)
-				return
-			}
+		if err := provisionLab(context.Background()); err != nil {
+			log.Printf("Environment setup failed: %v", err)
+			return
 		}
 		log.Println("Environment setup finished")
 	}()
@@ -282,38 +253,19 @@ func handleWebSocketTerminal(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func main() {
-	config, err := k8s.LoadKubeConfig()
-	if err != nil {
-		log.Fatalf("Failed to load Kubernetes configuration: %v", err)
-	}
-	clientset, err := k8s.NewClientSet(config)
-	if err != nil {
-		log.Fatalf("Error creating Kubernetes clientset: %v", err)
-	}
-
-	dynamicClient, err := dynamic.NewForConfig(config)
-	if err != nil {
-		log.Fatalf("Error creating Kubernetes dynamic client: %v", err)
-	}
-	clients := resources.Clients{Kube: clientset, Dynamic: dynamicClient}
-
-	http.HandleFunc("/setup", setupEnvironment)
-	http.HandleFunc("/catalog", getCatalog)
-	http.HandleFunc("/questions", func(w http.ResponseWriter, r *http.Request) {
+// newMux wires the API routes and, at every other path, the web interface.
+func newMux(clients resources.Clients) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/setup", setupEnvironment)
+	mux.HandleFunc("/catalog", getCatalog)
+	mux.HandleFunc("/questions", func(w http.ResponseWriter, r *http.Request) {
 		getQuestions(w, r, clients)
 	})
-	http.HandleFunc("/start", startQuiz)
-	http.HandleFunc("/finish", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/start", startQuiz)
+	mux.HandleFunc("/finish", func(w http.ResponseWriter, r *http.Request) {
 		finishQuiz(w, r, clients)
 	})
-
-	// WebSocket endpoint for terminal
-	http.HandleFunc("/terminal", func(w http.ResponseWriter, r *http.Request) {
-		handleWebSocketTerminal(w, r)
-	})
-
-	// Start the server with CORS middleware applied globally
-	log.Printf("KubeLearn backend listening on http://%s", listenAddr)
-	log.Fatal(http.ListenAndServe(listenAddr, withCORS(http.DefaultServeMux)))
+	mux.HandleFunc("/terminal", handleWebSocketTerminal)
+	mux.Handle("/", interfaceHandler())
+	return mux
 }
