@@ -7,7 +7,6 @@ SHELL := /bin/bash
 KUBE_CONTEXT ?= kind-kubelearn
 MANIFESTS_DIR ?= manifests
 GATEWAY_API_VERSION ?= v1.2.1
-TERRAFORM_DIR ?= config
 BACKEND_DIR ?= cmd
 BACKEND_BIN ?= bin/kubelearn
 FRONTEND_DIR ?= kubelearn-frontend
@@ -19,7 +18,6 @@ LOG_DIR ?= logs
 YAML_FILES := $(sort $(wildcard $(MANIFESTS_DIR)/*.yaml))
 MANIFEST_TARGETS := $(patsubst $(MANIFESTS_DIR)/%,apply-%,$(YAML_FILES))
 MKDIR_P := mkdir -p
-TERRAFORM := terraform -chdir=$(TERRAFORM_DIR)
 NPM := npm --prefix $(FRONTEND_DIR)
 
 .PHONY: \
@@ -30,11 +28,9 @@ NPM := npm --prefix $(FRONTEND_DIR)
 	manifests-delete \
 	manifests-lint \
 	gateway-api-install \
-	terraform-init \
-	terraform-plan \
-	terraform-apply \
-	terraform-destroy \
-	kube-context \
+	build \
+	cluster-up \
+	cluster-down \
 	infra-up \
 	backend-build \
 	backend-start \
@@ -56,7 +52,6 @@ help: ## Show available targets and configurable variables
 	@echo "  KUBE_CONTEXT    kubectl context to switch to (default: $(KUBE_CONTEXT))"
 	@echo "  MANIFESTS_DIR   directory containing Kubernetes manifests (default: $(MANIFESTS_DIR))"
 	@echo "  GATEWAY_API_VERSION  Gateway API release to install (default: $(GATEWAY_API_VERSION))"
-	@echo "  TERRAFORM_DIR   Terraform configuration directory (default: $(TERRAFORM_DIR))"
 	@echo "  FRONTEND_DIR    Frontend app directory (default: $(FRONTEND_DIR))"
 	@echo "  BACKEND_BIN     Location for compiled backend binary (default: $(BACKEND_BIN))"
 	@echo "  LOG_DIR         Directory for runtime logs and PID files (default: $(LOG_DIR))"
@@ -89,30 +84,19 @@ manifests-lint: ## Dry-run manifests for basic validation
 		kubectl apply --dry-run=client -f $$file >/dev/null; \
 	done
 
-# -----------------------------------------------------------------------------
-# Terraform
-# -----------------------------------------------------------------------------
-terraform-init: ## Initialize Terraform state
-	@echo "Initializing Terraform in $(TERRAFORM_DIR)"
-	@$(TERRAFORM) init
-
-terraform-plan: terraform-init ## Show Terraform execution plan
-	@echo "Generating Terraform plan"
-	@$(TERRAFORM) plan
-
-terraform-apply: terraform-init ## Apply Terraform infrastructure
-	@echo "Applying Terraform configuration"
-	@$(TERRAFORM) apply -auto-approve
-
-terraform-destroy: terraform-init ## Destroy Terraform infrastructure
-	@echo "Destroying Terraform infrastructure"
-	@$(TERRAFORM) destroy -auto-approve
 
 # -----------------------------------------------------------------------------
 # Runtime helpers
 # -----------------------------------------------------------------------------
 logs-dir:
 	@$(MKDIR_P) $(LOG_DIR)
+
+build: frontend-install ## Build the complete binary, with the web interface embedded
+	@echo "Building the web interface"
+	@$(NPM) run build
+	@echo "Building $(BACKEND_BIN) with the interface embedded"
+	@$(MKDIR_P) $(dir $(BACKEND_BIN))
+	@go build -tags embed -o $(BACKEND_BIN) ./$(BACKEND_DIR)
 
 backend-build: ## Build backend binary
 	@echo "Building backend binary at $(BACKEND_BIN)"
@@ -149,25 +133,15 @@ frontend-stop: ## Stop frontend dev server if running
 	@# npm does not always pass the signal on, so also stop this project's dev server process.
 	@pkill -f "$(FRONTEND_DIR)/node_modules/react-scripts" >/dev/null 2>&1 || true
 
-kube-context: ## Switch kubectl to the KubeLearn cluster context
-	@echo "Switching kubectl context to '$(KUBE_CONTEXT)'"
-	@attempt=0; \
-	until kubectl config get-contexts $(KUBE_CONTEXT) >/dev/null 2>&1; do \
-		if [ $$attempt -ge 20 ]; then \
-			echo "Context '$(KUBE_CONTEXT)' not found. Aborting." >&2; \
-			exit 1; \
-		fi; \
-		attempt=$$((attempt+1)); \
-		echo "Waiting for context '$(KUBE_CONTEXT)' to become available..."; \
-		sleep 3; \
-	done
-	@kubectl config use-context $(KUBE_CONTEXT)
+cluster-up: backend-build ## Create the kind cluster, switch kubectl to it and apply the lab resources
+	@./$(BACKEND_BIN) up
 
-infra-up: terraform-apply ## Provision infrastructure and switch kubectl context
-	@$(MAKE) kube-context
-	@echo "Infrastructure provisioned and context set to '$(KUBE_CONTEXT)'"
+cluster-down: backend-build ## Delete the kind cluster
+	@./$(BACKEND_BIN) down
 
-kubelearn: infra-up backend-start frontend-start ## Provision infra, switch context, start backend & frontend
+infra-up: cluster-up ## Alias for cluster-up
+
+kubelearn: cluster-up backend-start frontend-start ## Create the lab cluster, then start backend & frontend (development)
 	@echo "KubeLearn environment ready."
 	@echo "  Backend log : $(LOG_DIR)/backend.log"
 	@echo "  Frontend log: $(LOG_DIR)/frontend.log"

@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -17,6 +15,7 @@ import (
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 
+	"kubelearn"
 	"kubelearn/pkg/resources"
 	"kubelearn/pkg/utils"
 )
@@ -32,12 +31,12 @@ func newTestServer() *httptest.Server {
 
 func TestParseAllowedOrigins(t *testing.T) {
 	defaults := parseAllowedOrigins("")
-	if !defaults["http://localhost:3000"] || !defaults["http://127.0.0.1:3000"] || len(defaults) != 2 {
+	if !defaults["http://localhost:3000"] || !defaults["http://127.0.0.1:3000"] || len(defaults) != 4 {
 		t.Errorf("unexpected defaults: %v", defaults)
 	}
 
 	custom := parseAllowedOrigins(" http://localhost:3001/ ,, http://example.test ")
-	if !custom["http://localhost:3001"] || !custom["http://example.test"] || len(custom) != 2 {
+	if !custom["http://localhost:3001"] || !custom["http://example.test"] || custom["http://localhost:3000"] || len(custom) != 4 {
 		t.Errorf("unexpected custom origins: %v", custom)
 	}
 }
@@ -120,93 +119,123 @@ func TestTerminalAcceptsFrontendOrigin(t *testing.T) {
 	}
 }
 
-// stubMake replaces runMakeCommand for the test. Each call is sent on the
-// returned channel and blocks until release is closed.
-func stubMake(t *testing.T) (calls chan [2]string, release chan struct{}) {
+// stubProvision replaces provisionLab for the test. Each run is announced on
+// started and blocks until release is closed.
+func stubProvision(t *testing.T) (started chan struct{}, release chan struct{}) {
 	t.Helper()
-	calls = make(chan [2]string, 10)
+	started = make(chan struct{}, 10)
 	release = make(chan struct{})
-	original := runMakeCommand
-	runMakeCommand = func(dir, target string) error {
-		calls <- [2]string{dir, target}
+	original := provisionLab
+	provisionLab = func(context.Context) error {
+		started <- struct{}{}
 		<-release
 		return nil
 	}
-	t.Cleanup(func() { runMakeCommand = original })
-	return calls, release
+	t.Cleanup(func() { provisionLab = original })
+	return started, release
 }
 
-func postSetup(method string) *httptest.ResponseRecorder {
+func requestSetup(method string) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	setupEnvironment(rec, httptest.NewRequest(method, "/setup", nil))
 	return rec
 }
 
 func TestSetupRejectsGet(t *testing.T) {
-	calls, _ := stubMake(t)
-	if rec := postSetup(http.MethodGet); rec.Code != http.StatusMethodNotAllowed {
+	started, _ := stubProvision(t)
+	if rec := requestSetup(http.MethodGet); rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("GET /setup: status %d, want 405", rec.Code)
 	}
-	if len(calls) != 0 {
-		t.Errorf("GET /setup ran make")
+	if len(started) != 0 {
+		t.Errorf("GET /setup provisioned the lab")
 	}
 }
 
-func TestSetupFailsWithoutMakefile(t *testing.T) {
-	calls, _ := stubMake(t)
-	t.Setenv("KUBELEARN_ROOT", t.TempDir())
-	if rec := postSetup(http.MethodPost); rec.Code != http.StatusInternalServerError {
-		t.Errorf("status %d, want 500", rec.Code)
-	}
-	if len(calls) != 0 {
-		t.Errorf("setup ran make without a Makefile")
-	}
-}
+func TestSetupProvisionsTheLabOnce(t *testing.T) {
+	started, release := stubProvision(t)
 
-func TestSetupRunsExistingTargetsOnce(t *testing.T) {
-	calls, release := stubMake(t)
-	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "Makefile"), nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("KUBELEARN_ROOT", root)
-
-	if rec := postSetup(http.MethodPost); rec.Code != http.StatusAccepted {
+	if rec := requestSetup(http.MethodPost); rec.Code != http.StatusAccepted {
 		t.Fatalf("first POST: status %d, want 202", rec.Code)
 	}
-	first := <-calls // setup is now blocked inside the first target
+	<-started // provisioning is now running
 
-	if rec := postSetup(http.MethodPost); rec.Code != http.StatusConflict {
+	if rec := requestSetup(http.MethodPost); rec.Code != http.StatusConflict {
 		t.Errorf("second POST while running: status %d, want 409", rec.Code)
 	}
+	if len(started) != 0 {
+		t.Errorf("a second provisioning started while the first was running")
+	}
 
+	// Once it finishes, setup can be requested again.
 	close(release)
-	got := []string{first[1]}
-	for len(got) < len(setupTargets) {
-		got = append(got, (<-calls)[1])
+	deadline := time.Now().Add(2 * time.Second)
+	for setupRunning.Load() && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
 	}
-	if first[0] != root {
-		t.Errorf("make ran in %q, want %q", first[0], root)
-	}
-	if !reflect.DeepEqual(got, setupTargets) {
-		t.Errorf("targets run: %v, want %v", got, setupTargets)
+	if setupRunning.Load() {
+		t.Fatal("setup still marked as running after it finished")
 	}
 }
 
-// The targets /setup runs must exist in the project Makefile.
-func TestSetupTargetsExistInMakefile(t *testing.T) {
-	// The file is "Makefile" on disk here but tracked by git as "makefile".
-	makefile, err := os.ReadFile(filepath.Join("..", "Makefile"))
-	if err != nil {
-		makefile, err = os.ReadFile(filepath.Join("..", "makefile"))
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, target := range setupTargets {
-		if !strings.Contains(string(makefile), "\n"+target+":") {
-			t.Errorf("Makefile has no target %q", target)
+// The interface served by this binary must be able to call the API and open
+// the terminal, whichever loopback name the browser used.
+func TestOwnOriginIsAlwaysAllowed(t *testing.T) {
+	for _, configured := range []string{"", "http://example.test"} {
+		origins := parseAllowedOrigins(configured)
+		for _, own := range []string{"http://127.0.0.1:8083", "http://localhost:8083"} {
+			if !origins[own] {
+				t.Errorf("with KUBELEARN_ALLOWED_ORIGINS=%q, %s is not allowed", configured, own)
+			}
 		}
+	}
+	if parseAllowedOrigins("")["http://evil.example:8083"] {
+		t.Errorf("a foreign host on the same port is allowed")
+	}
+}
+
+func TestSPAHandler(t *testing.T) {
+	files := fstest.MapFS{
+		"index.html":        {Data: []byte("<html>app</html>")},
+		"static/js/main.js": {Data: []byte("console.log(1)")},
+		"images/logo.png":   {Data: []byte("png")},
+	}
+	handler := spaHandler(files)
+
+	cases := []struct{ path, want string }{
+		{"/", "<html>app</html>"},
+		{"/static/js/main.js", "console.log(1)"},
+		{"/images/logo.png", "png"},
+		{"/some/client/route", "<html>app</html>"}, // unknown paths get the app
+		{"/static", "<html>app</html>"},            // a directory is not a file
+	}
+	for _, tc := range cases {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tc.path, nil))
+		if rec.Code != http.StatusOK || rec.Body.String() != tc.want {
+			t.Errorf("%s: status %d body %q, want %q", tc.path, rec.Code, rec.Body.String(), tc.want)
+		}
+	}
+}
+
+// API routes keep working next to the interface, and a build without the
+// interface says how to get one.
+func TestMuxServesAPIAndInterface(t *testing.T) {
+	mux := newMux(emptyCluster())
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/catalog", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Header().Get("Content-Type"), "application/json") {
+		t.Errorf("/catalog: status %d, content type %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if _, embedded := kubelearn.Frontend(); embedded {
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<div id=\"root\">") {
+			t.Errorf("/: the embedded interface was not served (status %d)", rec.Code)
+		}
+	} else if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "make build") {
+		t.Errorf("/: status %d body %q, want the build instructions", rec.Code, rec.Body.String())
 	}
 }
 

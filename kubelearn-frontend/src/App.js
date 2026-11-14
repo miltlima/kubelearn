@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useId } from 'react';
 import TerminalPanel from './components/TerminalPanel';
+import { API } from './config';
 import { LANGUAGES, initialLanguage, saveLanguage, translator, questionText } from './i18n';
 
 const PASS_THRESHOLD = 85;
@@ -60,7 +61,6 @@ const FALLBACK_QUESTIONS = BASE_QUESTIONS.map((item, idx) => ({
   Passed: null,
 }));
 
-const API = 'http://localhost:8083';
 
 // Exam tracks and difficulty levels offered on the start screen. "all" selects
 // everything.

@@ -65,3 +65,16 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # The released binary embeds the interface built above.
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build and test the complete binary
+        working-directory: .
+        run: |
+          go vet -tags embed ./...
+          go test -tags embed ./cmd/
+          go build -tags embed -o bin/kubelearn ./cmd

@@ -46,6 +46,9 @@ func TestLoadKubeConfigHonoursKUBECONFIG(t *testing.T) {
 	if config.Host != "https://custom.example:6443" {
 		t.Errorf("Host = %q, want the server from KUBECONFIG", config.Host)
 	}
+	if got := CurrentContext(); got != "test" {
+		t.Errorf("CurrentContext() = %q, want %q", got, "test")
+	}
 	// An evaluation of every question must fit in one burst.
 	if config.Burst < 100 || config.QPS < 50 {
 		t.Errorf("client rate limit too low for an evaluation: QPS %v, burst %d", config.QPS, config.Burst)

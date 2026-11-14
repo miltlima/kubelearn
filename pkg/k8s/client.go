@@ -26,6 +26,19 @@ func LoadKubeConfig() (*rest.Config, error) {
 	return config, nil
 }
 
+// CurrentContext returns the name of the kubectl context LoadKubeConfig uses,
+// or "" when it cannot be determined (for example inside a pod).
+func CurrentContext() string {
+	raw, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		clientcmd.NewDefaultClientConfigLoadingRules(),
+		&clientcmd.ConfigOverrides{},
+	).RawConfig()
+	if err != nil {
+		return ""
+	}
+	return raw.CurrentContext
+}
+
 func NewClientSet(config *rest.Config) (*kubernetes.Clientset, error) {
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
