@@ -8,13 +8,14 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-func CreateLabel(clientset *kubernetes.Clientset) utils.Result {
-	pod, err := clientset.CoreV1().Pods("asia").Get(context.TODO(), "tshoot", metav1.GetOptions{})
-	passed := err == nil && pod.Spec.Containers[0].Image == "amazon/amazon-ecs-network-sidecar:latest" && pod.ObjectMeta.Labels["country"] == "china"
+func CreateLabel(ctx context.Context, clientset kubernetes.Interface) utils.Result {
+	pod, err := clientset.CoreV1().Pods("asia").Get(ctx, "tshoot", metav1.GetOptions{})
 
-	return utils.Result{
-		TestName:   "Question 6 - Create a pod tshoot with label country=china with amazon/amazon-ecs-network-sidecar:latest image in namespace asia",
-		Passed:     passed,
-		Difficulty: "Medium",
+	var report utils.Report
+	if report.Found(err, "Pod", "tshoot", "asia") {
+		report.ExpectImage(pod.Spec, "amazon/amazon-ecs-network-sidecar:latest")
+		country := pod.ObjectMeta.Labels["country"]
+		report.Expect(country == "china", "Label country is %s, expected china.", utils.Shown(country))
 	}
+	return report.Result("Question 6 - Create a pod tshoot with label country=china with amazon/amazon-ecs-network-sidecar:latest image in namespace asia", "Medium")
 }

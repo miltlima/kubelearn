@@ -77,3 +77,12 @@ terraform.rc
 
 ### Vscode ###
 .vscode
+### GoReleaser ###
+dist/
+
+### KubeLearn ###
+# Backend binaries
+/bin/
+/cmd/kubelearn
+# kubeconfig written by the kind Terraform provider (contains credentials)
+/config/kubelearn-config

@@ -11,6 +11,10 @@ type Result struct {
 	TestName   string
 	Passed     bool
 	Difficulty string
+	// Feedback explains why the question is not solved yet. Empty when passed.
+	Feedback string `json:"Feedback,omitempty"`
+	// Track is the exam track the question belongs to (Core, CKS, CKNE).
+	Track string `json:"Track,omitempty"`
 }
 
 func RenderResultsTable(results []Result) {

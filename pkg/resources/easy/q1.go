@@ -8,15 +8,12 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-func CreatePod(clientset *kubernetes.Clientset) utils.Result {
-	pod, err := clientset.CoreV1().Pods("default").Get(context.TODO(), "nginx", metav1.GetOptions{})
-	passed := err == nil &&
-		pod.Spec.Containers[0].Image == "nginx:alpine" &&
-		pod.Name == "nginx"
+func CreatePod(ctx context.Context, clientset kubernetes.Interface) utils.Result {
+	pod, err := clientset.CoreV1().Pods("default").Get(ctx, "nginx", metav1.GetOptions{})
 
-	return utils.Result{
-		TestName:   "Question 1 - Create a pod nginx name with nginx:alpine image",
-		Passed:     passed,
-		Difficulty: "Easy",
+	var report utils.Report
+	if report.Found(err, "Pod", "nginx", "default") {
+		report.ExpectImage(pod.Spec, "nginx:alpine")
 	}
+	return report.Result("Question 1 - Create a pod nginx name with nginx:alpine image", "Easy")
 }

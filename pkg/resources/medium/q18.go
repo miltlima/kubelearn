@@ -8,15 +8,15 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-func AddSecurityContext(clientset *kubernetes.Clientset) utils.Result {
-	deploy, err := clientset.AppsV1().Deployments("default").Get(context.TODO(), "mark42", metav1.GetOptions{})
-	passed := err == nil && deploy.Spec.Template.Spec.Containers != nil && len(deploy.Spec.Template.Spec.Containers) > 0 &&
-		deploy.Spec.Template.Spec.Containers[0].SecurityContext != nil &&
-		*deploy.Spec.Template.Spec.Containers[0].SecurityContext.AllowPrivilegeEscalation == false
+func AddSecurityContext(ctx context.Context, clientset kubernetes.Interface) utils.Result {
+	deploy, err := clientset.AppsV1().Deployments("default").Get(ctx, "mark42", metav1.GetOptions{})
 
-	return utils.Result{
-		TestName:   "Question 18 - Prevent privilege escalation in the deployment mark42",
-		Passed:     passed,
-		Difficulty: "Medium",
+	var report utils.Report
+	if report.Found(err, "Deployment", "mark42", "default") {
+		container := utils.FirstContainer(deploy.Spec.Template.Spec)
+		report.Expect(container != nil && container.SecurityContext != nil &&
+			utils.PtrEquals(container.SecurityContext.AllowPrivilegeEscalation, false),
+			"The first container should set allowPrivilegeEscalation to false in its security context.")
 	}
+	return report.Result("Question 18 - Prevent privilege escalation in the deployment mark42", "Medium")
 }

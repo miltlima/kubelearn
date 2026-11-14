@@ -8,13 +8,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-func CreateConfigMap(clientset *kubernetes.Clientset) utils.Result {
-	configMap, err := clientset.CoreV1().ConfigMaps("default").Get(context.TODO(), "europe-configmap", metav1.GetOptions{})
-	passed := err == nil && configMap.Name == "europe-configmap" && configMap.Data["France"] == "Paris"
+func CreateConfigMap(ctx context.Context, clientset kubernetes.Interface) utils.Result {
+	configMap, err := clientset.CoreV1().ConfigMaps("default").Get(ctx, "europe-configmap", metav1.GetOptions{})
 
-	return utils.Result{
-		TestName:   "Question 5 - Create a configmap europe-configmap with data France=Paris",
-		Passed:     passed,
-		Difficulty: "Medium",
+	var report utils.Report
+	if report.Found(err, "ConfigMap", "europe-configmap", "default") {
+		france := configMap.Data["France"]
+		report.Expect(france == "Paris", "Key France is %s, expected Paris.", utils.Shown(france))
 	}
+	return report.Result("Question 5 - Create a configmap europe-configmap with data France=Paris", "Medium")
 }

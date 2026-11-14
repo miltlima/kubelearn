@@ -9,7 +9,7 @@ const BASE_QUESTIONS = [
   { difficulty: 'Hard', description: 'Create a new deployment called `redis` with image `redis:alpine` in `latam` namespace, and create a service called `redis-service` with port `6379` in same namespace.' },
   { difficulty: 'Easy', description: 'Create a namespace called `europe`.' },
   { difficulty: 'Medium', description: 'Create a configmap `europe-configmap` with data `France=Paris`.' },
-  { difficulty: 'Medium', description: 'Create a pod `thsoot` with label `country=china`, image `amazon/amazon-ecs-network-sidecar:latest`, in namespace `asia`.' },
+  { difficulty: 'Medium', description: 'Create a pod `tshoot` with label `country=china`, image `amazon/amazon-ecs-network-sidecar:latest`, in namespace `asia`.' },
   { difficulty: 'Medium', description: 'Create a persistent volume `unicorn-pv` with capacity `1Gi`, access mode `ReadWriteMany`, and host path `/tmp/data`.' },
   { difficulty: 'Medium', description: 'Create a persistent volume claim `unicorn-pvc` with capacity `400Mi` and access mode `ReadWriteMany`.' },
   { difficulty: 'Hard', description: 'Create a pod `webserver` in namespace `public` with `nginx:alpine`, mount `/usr/share/nginx/html`, and use PVC `unicorn-pvc`.' },
@@ -33,17 +33,12 @@ const BASE_QUESTIONS = [
 ];
 
 const ADVANCED_CKS_QUESTIONS = [
-  { difficulty: 'Hard', description: 'Run pod `nginx-apparmor` applying AppArmor profile `localhost/kubelearn-nginx`.' },
-  { difficulty: 'Hard', description: 'Launch pod `seccomp-default` with seccomp profile `runtime/default` and document how to verify it.' },
   { difficulty: 'Hard', description: 'Create pod that mounts projected volume with TLS cert/key secrets and exports them as env vars.' },
   { difficulty: 'Hard', description: 'Rotate secret `db-credentials` used by deployment `inventory-api` and roll pods to consume new values.' },
   { difficulty: 'Hard', description: 'Enable audit policy in namespace `audit-labs` to log Secret GET operations and produce one audited request.' },
-  { difficulty: 'Hard', description: 'Deploy pod `strict-security` forcing non-root UID, dropping all capabilities, adding only `NET_BIND_SERVICE`, and mounting root filesystem read-only.' },
-  { difficulty: 'Hard', description: 'Create NetworkPolicy in namespace `secure-egress` that denies all egress except UDP/53 to cluster DNS and TCP to CIDR `10.10.0.0/16`.' },
   { difficulty: 'Hard', description: 'Simulate encrypted storage: create CSI secret-backed volume for pod `vault-agent` and prove secret never appears in plain text on node.' },
   { difficulty: 'Hard', description: 'Author CronJob `etcd-backup` that runs daily, stores etcd snapshot to PVC, and deletes files older than 7 days.' },
   { difficulty: 'Hard', description: 'Deploy DaemonSet `falco-agent` watching privileged activity; trigger an alert by `exec` into a privileged pod and note event.' },
-  { difficulty: 'Hard', description: 'Configure PodSecurity `baseline` for namespace `baseline-labs` and `restricted` for `restricted-labs`, then validate compliance.' },
   { difficulty: 'Hard', description: 'Create pod `image-policy-test` that downloads from private registry using image policy webhook credentials stored in secret `policy-creds`.' },
 ];
 
@@ -59,102 +54,110 @@ const FALLBACK_QUESTIONS = BASE_QUESTIONS.map((item, idx) => ({
   id: idx + 1,
   TestName: `Question ${idx + 1} - ${item.description}`,
   Difficulty: item.difficulty,
+  Track: 'Core',
   Advanced: false,
   Passed: null,
 }));
 
-const difficultyPalette = {
-  easy: 'bg-blue-100 text-blue-700',
-  medium: 'bg-amber-100 text-amber-700',
-  hard: 'bg-rose-100 text-rose-700',
+const API = 'http://localhost:8083';
+
+// Exam tracks offered on the start screen. "all" runs every question.
+const TRACKS = [
+  { id: 'all', label: 'All', about: 'Every question' },
+  { id: 'Core', label: 'Core', about: 'General Kubernetes practice' },
+  { id: 'CKS', label: 'CKS', about: 'Security' },
+  { id: 'CKNE', label: 'CKNE', about: 'Networking' },
+];
+
+const inTrack = (track) => (question) => track === 'all' || question.Track === track;
+
+const difficultyColor = {
+  easy: 'text-kube-soft',
+  medium: 'text-warn',
+  hard: 'text-fail',
 };
 
-const primaryButtonClasses =
-  'inline-flex items-center justify-center gap-2 rounded-full bg-blue-600 px-6 py-3 text-base font-semibold text-white transition duration-200 hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400 disabled:cursor-not-allowed disabled:bg-blue-300';
+const focusRing =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-kube-soft';
 
-const secondaryButtonClasses =
-  'inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-6 py-3 text-base font-semibold text-slate-700 transition duration-200 hover:border-blue-300 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400 disabled:cursor-not-allowed disabled:opacity-50';
+const primaryButtonClasses = `inline-flex items-center justify-center rounded-md bg-kube px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4a7ff0] disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`;
 
-const StatCard = ({ label, value, helper, accent }) => (
-  <div className="rounded-[24px] border border-slate-200 bg-white px-6 py-5 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
-    <p className="text-xs font-semibold uppercase tracking-[0.32em] text-slate-500">{label}</p>
-    <p className={`mt-3 text-3xl font-semibold text-slate-900 ${accent ?? ''}`}>{value}</p>
-    {helper && <p className="mt-2 text-base leading-relaxed text-slate-500">{helper}</p>}
-  </div>
-);
+const secondaryButtonClasses = `inline-flex items-center justify-center rounded-md border border-line px-4 py-2 text-sm font-semibold text-fg transition-colors hover:border-kube-soft disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`;
 
-const DifficultyBadge = ({ value }) => {
-  const cls = difficultyPalette[value?.toLowerCase?.()] || 'bg-slate-200 text-slate-700';
-  return <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${cls}`}>{value || 'Unknown'}</span>;
-};
+const quietButtonClasses = `rounded-md px-2 py-2 text-sm text-muted transition-colors hover:text-fg ${focusRing}`;
 
 const extractObjective = (testName = '') => {
-  if (!testName) return 'Challenge objective not available.';
-  const stripped = testName.replace(/^(Question|Challenge)\s*\d+\s*[-–—:]\s*/i, '').trim();
+  if (!testName) return 'Question not available.';
+  const stripped = testName.replace(/^(Question|Challenge|Advanced)\s*\d+\s*[-–—:]\s*/i, '').trim();
   return stripped.length ? stripped : testName;
 };
 
-const QuestionCard = ({ question, index, showResult }) => {
+// Renders `names` wrapped in backticks as inline code.
+const renderInline = (text) =>
+  text.split('`').map((part, idx) =>
+    idx % 2 === 1 ? (
+      <code key={idx} className="rounded bg-panel px-1.5 py-0.5 font-mono text-[0.9em] text-kube-soft">
+        {part}
+      </code>
+    ) : (
+      part
+    ),
+  );
+
+const formatTime = (seconds) => {
+  const minutes = Math.floor(seconds / 60)
+    .toString()
+    .padStart(2, '0');
+  const remainingSeconds = (seconds % 60).toString().padStart(2, '0');
+  return `${minutes}:${remainingSeconds}`;
+};
+
+// One question as a list row. The left edge shows its state once it has been
+// checked: green when solved, red when not.
+const QuestionRow = ({ question, number, showResult, showTrack = false, failedLabel = 'Review needed' }) => {
   const objective = extractObjective(question.TestName);
   const hasResult = showResult && typeof question.Passed === 'boolean';
-  const bulletPoints = objective
-    .split(/\.(?=\s|$)/)
-    .map((part) => part.trim())
-    .filter(Boolean);
   const titleId = useId();
+  const edge = !hasResult ? 'border-l-transparent' : question.Passed ? 'border-l-pass' : 'border-l-fail';
 
   return (
-    <article
-      role="listitem"
+    <li
       aria-labelledby={titleId}
-      className="rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm focus-within:border-blue-300 focus-within:shadow-[0_0_0_2px_rgba(37,99,235,0.2)]"
+      className={`grid break-inside-avoid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 border-b border-l-2 border-b-line px-5 py-4 ${edge}`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
-          <p className="text-sm font-semibold uppercase tracking-[0.35em] text-slate-500">Challenge {index + 1}</p>
-          {question.Advanced && (
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-[0.3em] text-slate-500">
-              Advanced
+      <span className="pt-0.5 font-mono text-sm tabular-nums text-muted" aria-hidden="true">
+        {number}
+      </span>
+      <div>
+        <h3 id={titleId} className="break-words text-[0.95rem] font-normal leading-relaxed text-fg">
+          {renderInline(objective)}
+        </h3>
+        <p className="mt-1.5 flex flex-wrap items-baseline gap-x-3 text-sm">
+          <span className={difficultyColor[question.Difficulty?.toLowerCase?.()] || 'text-muted'}>
+            {question.Difficulty || 'Unknown'}
+          </span>
+          {showTrack && question.Track && <span className="text-muted">{question.Track}</span>}
+          {question.Advanced && <span className="text-muted">Extra scenario, not graded</span>}
+          {hasResult && (
+            <span className={`font-semibold ${question.Passed ? 'text-pass' : 'text-fail'}`}>
+              {question.Passed ? 'Passed' : failedLabel}
             </span>
           )}
-        </div>
-        <DifficultyBadge value={question.Difficulty} />
+        </p>
+        {hasResult && !question.Passed && question.Feedback && (
+          <p className="mt-1.5 text-sm leading-relaxed text-muted">{question.Feedback}</p>
+        )}
       </div>
-      <p className="mt-3 text-sm font-semibold uppercase tracking-[0.28em] text-slate-400">Objective</p>
-      <h3 id={titleId} className="sr-only">
-        {objective}
-      </h3>
-
-      {bulletPoints.length > 1 ? (
-        <ul className="mt-2 space-y-1.5 text-lg leading-relaxed text-slate-800">
-          {bulletPoints.map((point, idx) => (
-            <li key={idx} className="flex gap-2">
-              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />
-              <span className="whitespace-pre-line break-words">{point}</span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-2 text-lg leading-relaxed text-slate-800 whitespace-pre-line break-words">{objective}</p>
-      )}
-
-      {hasResult && (
-        <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-          <span
-            className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
-              question.Passed
-                ? 'bg-blue-100 text-blue-700 ring-1 ring-inset ring-blue-200'
-                : 'bg-rose-100 text-rose-700 ring-1 ring-inset ring-rose-200'
-            }`}
-          >
-            {question.Passed ? 'Passed' : 'Review needed'}
-          </span>
-          {question.Feedback && <p className="text-slate-500">{question.Feedback}</p>}
-        </div>
-      )}
-    </article>
+    </li>
   );
 };
+
+const ErrorBanner = ({ message }) =>
+  message ? (
+    <div className="border-b border-fail/40 bg-fail/10 px-5 py-3 text-sm text-fail" role="alert" aria-live="polite">
+      {message}
+    </div>
+  ) : null;
 
 function App() {
   const [questions, setQuestions] = useState(FALLBACK_QUESTIONS);
@@ -168,33 +171,81 @@ function App() {
   const [isFinishing, setIsFinishing] = useState(false);
   const [error, setError] = useState('');
   const [lastAttempt, setLastAttempt] = useState(null);
+  const [isChecking, setIsChecking] = useState(false);
+  const [lastCheckedAt, setLastCheckedAt] = useState(null);
+  const [track, setTrack] = useState('all');
+  // Every question as described by the backend; null until it answers.
+  const [catalog, setCatalog] = useState(null);
+
+  const trackQuery = track === 'all' ? '' : `?track=${track.toLowerCase()}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(`${API}/catalog`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled && Array.isArray(data) && data.length > 0) setCatalog(data);
+      } catch (err) {
+        // Backend not running: the start screen falls back to the built-in list.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fetchQuestions = async () => {
     setIsLoading(true);
     setError('');
     try {
-      const response = await fetch('http://localhost:8083/questions');
+      const response = await fetch(`${API}/questions${trackQuery}`);
       if (!response.ok) throw new Error('Failed to fetch questions');
       const data = await response.json();
       if (Array.isArray(data) && data.length > 0) {
         setQuestions(data);
         setIsFallback(false);
       } else {
-        setQuestions(FALLBACK_QUESTIONS);
+        setQuestions(FALLBACK_QUESTIONS.filter(inTrack(track)));
         setIsFallback(true);
       }
     } catch (err) {
       const reason = err instanceof Error ? err.message : 'Unknown error';
       console.warn(`[KubeLearn] Unable to fetch questions: ${reason}`);
       setError('Unable to sync the questions. Make sure the backend is running and try again.');
-      setQuestions(FALLBACK_QUESTIONS);
+      setQuestions(FALLBACK_QUESTIONS.filter(inTrack(track)));
       setIsFallback(true);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Re-evaluates the cluster mid-attempt so each challenge shows whether it is
+  // solved and, if not, why. The list stays on screen while the check runs.
+  const checkProgress = async () => {
+    if (isChecking) return;
+    setIsChecking(true);
+    setError('');
+    try {
+      const response = await fetch(`${API}/questions${trackQuery}`);
+      if (!response.ok) throw new Error(`Backend answered ${response.status}`);
+      const data = await response.json();
+      if (!Array.isArray(data) || data.length === 0) throw new Error('No questions returned');
+      setQuestions(data);
+      setIsFallback(false);
+      setLastCheckedAt(new Date());
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'Unknown error';
+      console.warn(`[KubeLearn] Unable to check progress: ${reason}`);
+      setError('Unable to check your progress. Make sure the backend and the cluster are running and try again.');
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
   const startQuiz = () => {
+    setLastCheckedAt(null);
     setQuizStarted(true);
     setQuizFinished(false);
     setScore(0);
@@ -208,19 +259,28 @@ function App() {
     setIsFinishing(true);
     setError('');
     try {
-      const response = await fetch('http://localhost:8083/finish');
+      const response = await fetch(`${API}/finish${trackQuery}`);
       if (!response.ok) throw new Error('Failed to finish quiz');
       const data = await response.json();
       const normalizedScore = Math.round(data.score);
+      // Show the results the score was computed from, not the snapshot taken
+      // when the quiz started.
+      const hasResults = Array.isArray(data.results) && data.results.length > 0;
+      const results = hasResults ? data.results : questions;
+      if (hasResults) {
+        setQuestions(results);
+        setIsFallback(false);
+      }
       setScore(normalizedScore);
       setQuizFinished(true);
 
-      const passedQuestions = questions.filter((q) => q.Passed).length;
+      const passedQuestions = results.filter((q) => q.Passed).length;
       setLastAttempt({
         score: normalizedScore,
-        totalQuestions: questions.length,
+        totalQuestions: results.length,
         passedQuestions,
         duration: elapsedTime,
+        track,
         completedAt: new Date().toISOString(),
       });
     } catch (err) {
@@ -233,6 +293,7 @@ function App() {
   };
 
   const resetQuiz = () => {
+    setLastCheckedAt(null);
     setQuizStarted(false);
     setQuizFinished(false);
     setQuestions(FALLBACK_QUESTIONS);
@@ -256,229 +317,250 @@ function App() {
     };
   }, [quizStarted, quizFinished]);
 
-  const evaluatedQuestions = questions.length ? questions : FALLBACK_QUESTIONS;
+  // Before an attempt the list is a preview of the chosen track; during and
+  // after it, the questions the backend evaluated.
+  const preview = (catalog ?? FALLBACK_QUESTIONS).filter(inTrack(track));
+  const evaluatedQuestions = quizStarted ? questions : preview;
+  const trackCount = (id) => (catalog ?? FALLBACK_QUESTIONS).filter(inTrack(id)).length;
+  const trackLabel = TRACKS.find((item) => item.id === track)?.label ?? track;
+  const showExtras = track === 'all' || track === 'CKS';
   const displayedQuestions = useMemo(
-    () => (includeAdvanced ? [...evaluatedQuestions, ...ADVANCED_QUESTIONS.map((q) => ({ ...q, Passed: q.Passed ?? null }))] : evaluatedQuestions),
-    [evaluatedQuestions, includeAdvanced],
+    () => (includeAdvanced && showExtras ? [...evaluatedQuestions, ...ADVANCED_QUESTIONS] : evaluatedQuestions),
+    [evaluatedQuestions, includeAdvanced, showExtras],
   );
 
-  const questionCount = displayedQuestions.length;
   const evaluatedCount = evaluatedQuestions.length;
   const passedCount = evaluatedQuestions.filter((q) => q.Passed).length;
-  const passRate = evaluatedCount ? Math.round((passedCount / evaluatedCount) * 100) : 0;
-  const currentTimerValue = quizStarted && !quizFinished ? elapsedTime : lastAttempt?.duration ?? 0;
-  const lastAttemptDate = useMemo(
-    () => (lastAttempt ? new Date(lastAttempt.completedAt).toLocaleString() : null),
-    [lastAttempt],
-  );
+  const progressPercent = evaluatedCount ? Math.round((passedCount / evaluatedCount) * 100) : 0;
+  const numbered = evaluatedQuestions.map((question, index) => ({ question, number: index + 1 }));
 
-  const formatTime = (seconds) => {
-    const minutes = Math.floor(seconds / 60)
-      .toString()
-      .padStart(2, '0');
-    const remainingSeconds = (seconds % 60).toString().padStart(2, '0');
-    return `${minutes}:${remainingSeconds}`;
-  };
+  // Start screen: what this is, one action, and the real question list.
+  if (!quizStarted) {
+    return (
+      <main className="mx-auto max-w-5xl px-6 py-14 sm:py-20">
+        <h1 className="text-4xl font-semibold tracking-tight text-fg sm:text-5xl">KubeLearn</h1>
+        <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted">
+          Hands-on Kubernetes questions. Solve each one in your cluster from the built-in terminal, then check your
+          answers against the live cluster.
+        </p>
 
-  return (
-    <div className="relative min-h-screen overflow-x-hidden bg-slate-50 text-slate-800">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-x-0 -top-24 h-72 bg-gradient-to-br from-blue-200 via-sky-100 to-transparent blur-3xl" />
-        <div className="absolute inset-y-0 right-0 w-2/3 bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.15),transparent_65%)] blur-2xl" />
-      </div>
-
-      <div className="relative z-10 mx-auto flex min-h-screen w-full flex-col gap-12 px-6 pb-16 pt-12 sm:px-10 lg:px-16">
-        <header className="rounded-[32px] border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-50/60 p-10 shadow-[0_35px_95px_rgba(15,23,42,0.12)]">
-          <div className="space-y-6">
-            <span className="inline-flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-blue-700 ring-1 ring-inset ring-blue-200">
-              Kubernetes mastery lab
-            </span>
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
-              Level up your Kubernetes instincts with immersive scenario drills.
-            </h1>
-            <p className="max-w-3xl text-base text-slate-600 sm:text-lg">
-              Instant access to curated Kubernetes scenarios covering infrastructure builds, security hardening, network policies, audit controls, and operations under pressure. Launch a simulation, apply manifests, and track improvements run after run.
+        <fieldset className="mt-10">
+          <legend className="text-sm text-muted">Choose what to practise</legend>
+          <div className="mt-3 flex flex-wrap gap-3">
+            {TRACKS.map((item) => {
+              const selected = item.id === track;
+              const count = trackCount(item.id);
+              return (
+                <label
+                  key={item.id}
+                  className={`cursor-pointer rounded-md border px-4 py-3 transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-kube-soft ${
+                    selected ? 'border-kube bg-kube/15' : 'border-line hover:border-kube-soft'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="track"
+                    value={item.id}
+                    checked={selected}
+                    onChange={() => setTrack(item.id)}
+                    className="sr-only"
+                    aria-label={`${item.label} track, ${count} questions`}
+                  />
+                  <span className="block text-base font-semibold text-fg">
+                    {item.label} <span className="font-normal tabular-nums text-muted">{count}</span>
+                  </span>
+                  <span className="block text-sm text-muted">{item.about}</span>
+                </label>
+              );
+            })}
+          </div>
+          {!catalog && (
+            <p className="mt-3 text-sm text-warn">
+              The backend is not answering, so only the built-in Core list is shown. Start it with make backend-start.
             </p>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <StatCard
-                label="Open challenges"
-                value={questionCount || '—'}
-                helper={includeAdvanced ? 'Core + advanced scenarios in view.' : 'Core practice set.'}
-              />
-              <StatCard
-                label="Latest score"
-                value={lastAttempt ? `${lastAttempt.score}%` : '—'}
-                helper={lastAttemptDate ? `Completed ${lastAttemptDate}` : 'Finish a run to collect data.'}
-                accent={lastAttempt && lastAttempt.score >= PASS_THRESHOLD ? 'text-blue-600' : ''}
-              />
-              <StatCard
-                label={quizStarted && !quizFinished ? 'Live timer' : 'Last run duration'}
-                value={formatTime(currentTimerValue)}
-                helper={quizStarted && !quizFinished ? 'Tracking active attempt.' : 'Timer resets on next run.'}
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-4 pt-4">
+          )}
+        </fieldset>
+
+        <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
+          <button
+            type="button"
+            onClick={startQuiz}
+            className={primaryButtonClasses}
+            aria-label="Start quiz simulation"
+            disabled={evaluatedCount === 0}
+          >
+            Start attempt with {evaluatedCount} questions
+          </button>
+          {lastAttempt && (
+            <p className="text-sm text-muted">
+              Last attempt: {lastAttempt.score}% ({lastAttempt.passedQuestions} of {lastAttempt.totalQuestions}) in{' '}
+              {formatTime(lastAttempt.duration)}, {new Date(lastAttempt.completedAt).toLocaleString()}
+            </p>
+          )}
+        </div>
+
+        <h2 className="mt-16 text-lg font-semibold text-fg">The questions</h2>
+        <ol className="mt-4 border-t border-line lg:columns-2 lg:gap-x-10">
+          {numbered.map(({ question, number }) => (
+            <QuestionRow
+              key={question.TestName}
+              question={question}
+              number={number}
+              showResult={false}
+              showTrack={track === 'all'}
+            />
+          ))}
+        </ol>
+      </main>
+    );
+  }
+
+  // Results: the score first, then what is left to solve and why.
+  if (quizFinished) {
+    const passedOverall = score >= PASS_THRESHOLD;
+    const unsolved = numbered.filter(({ question }) => !question.Passed);
+    const solved = numbered.filter(({ question }) => question.Passed);
+
+    return (
+      <main className="mx-auto max-w-5xl px-6 py-14">
+        <h1 className="text-lg font-semibold text-muted">Results overview</h1>
+        <div className="mt-4 flex flex-wrap items-end gap-x-10 gap-y-4">
+          <p className={`text-7xl font-semibold leading-none tabular-nums ${passedOverall ? 'text-pass' : 'text-fg'}`}>
+            {score}%
+          </p>
+          <div className="space-y-1 text-base">
+            <p className={`font-semibold ${passedOverall ? 'text-pass' : 'text-warn'}`}>
+              {passedOverall ? 'Status: Passed' : 'Status: Keep practising'}
+            </p>
+            <p className="text-fg">
+              {passedCount} of {evaluatedCount} questions solved.
+            </p>
+            <p className="text-muted">
+              Time spent {formatTime(elapsedTime)}. The passing score is {PASS_THRESHOLD}%.
+            </p>
+          </div>
+        </div>
+        <div className="mt-8 flex flex-wrap items-center gap-3">
+          <button type="button" onClick={startQuiz} className={primaryButtonClasses}>
+            Start another attempt
+          </button>
+          <button type="button" onClick={resetQuiz} className={secondaryButtonClasses}>
+            Back to start
+          </button>
+        </div>
+
+        {unsolved.length > 0 && (
+          <section className="mt-14">
+            <h2 className="text-lg font-semibold text-fg">Still to solve ({unsolved.length})</h2>
+            <ol className="mt-4 border-t border-line">
+              {unsolved.map(({ question, number }) => (
+                <QuestionRow key={question.TestName} question={question} number={number} showResult />
+              ))}
+            </ol>
+          </section>
+        )}
+        {solved.length > 0 && (
+          <section className="mt-14">
+            <h2 className="text-lg font-semibold text-fg">Solved ({solved.length})</h2>
+            <ol className="mt-4 border-t border-line">
+              {solved.map(({ question, number }) => (
+                <QuestionRow key={question.TestName} question={question} number={number} showResult />
+              ))}
+            </ol>
+          </section>
+        )}
+      </main>
+    );
+  }
+
+  // Attempt in progress: a workbench that fills the window. Questions on the
+  // left, terminal on the right, each scrolling on its own.
+  return (
+    <div className="flex min-h-screen flex-col lg:h-screen">
+      <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line bg-panel px-5 py-3">
+        <p className="text-base font-semibold text-fg">
+          KubeLearn{track !== 'all' && <span className="font-normal text-muted"> {trackLabel}</span>}
+        </p>
+        <p className="font-mono text-base tabular-nums text-fg" role="timer" aria-label="Time elapsed">
+          {formatTime(elapsedTime)}
+        </p>
+        <div className="flex min-w-[14rem] flex-1 items-center gap-3">
+          <div className="h-1.5 w-32 shrink-0 overflow-hidden rounded-full bg-line" aria-hidden="true">
+            <div className="h-full rounded-full bg-pass transition-[width] duration-300" style={{ width: `${lastCheckedAt ? progressPercent : 0}%` }} />
+          </div>
+          <p className="text-sm text-muted" role="status" aria-live="polite">
+            {lastCheckedAt
+              ? `${passedCount} of ${evaluatedCount} solved, checked at ${lastCheckedAt.toLocaleTimeString()}`
+              : isFallback && !isLoading
+                ? 'Showing the built-in question list'
+                : `${evaluatedCount} questions, not checked yet`}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={checkProgress}
+            className={secondaryButtonClasses}
+            disabled={isChecking || isFinishing || isLoading}
+            aria-label="Check progress on the challenges"
+          >
+            {isChecking ? 'Checking…' : 'Check progress'}
+          </button>
+          <button
+            type="button"
+            onClick={finishQuiz}
+            className={primaryButtonClasses}
+            disabled={isFinishing || isLoading}
+            aria-label="Finish current attempt"
+          >
+            {isFinishing ? 'Finishing…' : 'Finish attempt'}
+          </button>
+          <button type="button" onClick={startQuiz} className={quietButtonClasses} disabled={isLoading} aria-label="Restart quiz simulation">
+            Restart
+          </button>
+          <button type="button" onClick={resetQuiz} className={quietButtonClasses} aria-label="Reset quiz session">
+            Leave
+          </button>
+        </div>
+      </header>
+
+      <ErrorBanner message={error} />
+
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+        <section className="min-h-0 border-line lg:overflow-y-auto lg:border-r" aria-label="Questions">
+          {isLoading ? (
+            <p className="px-5 py-6 text-sm text-muted">Loading questions…</p>
+          ) : (
+            <ol aria-label="Kubernetes challenges">
+              {displayedQuestions.map((question, index) => (
+                <QuestionRow
+                  key={`${question.TestName}-${index}`}
+                  question={question}
+                  number={index + 1}
+                  showResult={lastCheckedAt !== null}
+                  showTrack={track === 'all'}
+                  failedLabel="Not solved yet"
+                />
+              ))}
+            </ol>
+          )}
+          {showExtras && (
+            <div className="px-5 py-4">
               <button
                 type="button"
-                onClick={startQuiz}
-                className={primaryButtonClasses}
-                disabled={isLoading}
-                aria-label={quizStarted ? 'Restart quiz simulation' : 'Start quiz simulation'}
+                onClick={() => setIncludeAdvanced((prev) => !prev)}
+                className={quietButtonClasses}
+                aria-pressed={includeAdvanced}
               >
-                {quizStarted ? 'Restart quiz' : 'Start quiz'}
-              </button>
-              {(quizStarted || quizFinished) && (
-                <button type="button" onClick={resetQuiz} className={secondaryButtonClasses} aria-label="Reset quiz session">
-                  Reset session
-                </button>
-              )}
-              {isFallback && <span className="text-xs uppercase tracking-[0.3em] text-amber-500">Fallback dataset</span>}
-            </div>
-          </div>
-        </header>
-
-        {quizStarted && !quizFinished && (
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_30px_75px_rgba(15,23,42,0.12)]">
-            <div className="grid gap-6 lg:grid-cols-[minmax(360px,0.55fr)_minmax(420px,0.45fr)] xl:grid-cols-[minmax(380px,0.5fr)_minmax(460px,0.5fr)]">
-              <div className="flex max-h-[760px] flex-col gap-5 overflow-y-auto pr-2">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h2 className="text-2xl font-semibold text-slate-900">Live challenge board</h2>
-                    <p className="text-sm text-slate-600">
-                      Preview each prompt, map the solution, and iterate in a real cluster or the practice terminal.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-600">
-                      <svg className="h-4 w-4 text-blue-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l3 3" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 1 1-9-9" />
-                      </svg>
-                      {formatTime(elapsedTime)}
-                    </span>
-                    <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-600">
-                      <svg className="h-4 w-4 text-sky-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m3 7 9-4 9 4-9 4-9-4v10l9 4 9-4V7" />
-                      </svg>
-                      {questionCount} challenges
-                    </span>
-                    <button
-                      type="button"
-                      onClick={finishQuiz}
-                      className={primaryButtonClasses}
-                      disabled={isFinishing || isLoading}
-                      aria-label="Finish current attempt"
-                    >
-                      {isFinishing ? 'Submitting…' : 'Finish attempt'}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-6 space-y-4">
-                  {error && (
-                    <div
-                      className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600"
-                      role="alert"
-                      aria-live="polite"
-                    >
-                      {error}
-                    </div>
-                  )}
-
-                  {isLoading && (
-                    <div className="grid gap-3">
-                      {Array.from({ length: 4 }).map((_, idx) => (
-                        <div key={idx} className="h-24 animate-pulse rounded-2xl bg-slate-100" />
-                      ))}
-                    </div>
-                  )}
-
-                  {!isLoading && questionCount > 0 && (
-                    <div className="grid gap-3 md:grid-cols-1" role="list" aria-label="Kubernetes challenges">
-                      {displayedQuestions.map((question, index) => (
-                        <QuestionCard key={`${question.TestName}-${index}`} question={question} index={index} showResult={false} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setIncludeAdvanced((prev) => !prev)}
-                  className="mt-4 inline-flex items-center gap-2 self-start rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-blue-300 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
-                  aria-pressed={includeAdvanced}
-                >
-                  <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 opacity-80" aria-hidden="true" />
-                  {includeAdvanced ? 'Hide advanced scenarios' : 'Show advanced scenarios'}
-                </button>
-              </div>
-
-              <div className="flex max-h-[760px] justify-center overflow-hidden lg:justify-start">
-                <div className="w-full min-w-[360px] lg:min-w-[420px]">
-                  <TerminalPanel isVisible={quizStarted && !quizFinished} />
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {quizFinished && (
-          <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-[0_32px_80px_rgba(15,23,42,0.1)]">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-2xl font-semibold text-slate-900">Results overview</h2>
-                <p className="text-sm text-slate-600">Passing threshold is {PASS_THRESHOLD}% — aim for higher on your next run.</p>
-              </div>
-              <span
-                className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-semibold ${
-                  score >= PASS_THRESHOLD
-                    ? 'bg-blue-100 text-blue-700 ring-1 ring-inset ring-blue-200'
-                    : 'bg-rose-100 text-rose-700 ring-1 ring-inset ring-rose-200'
-                }`}
-              >
-                {score >= PASS_THRESHOLD ? 'Status: Passed' : 'Status: Keep practising'}
-              </span>
-            </div>
-
-            <div className="mt-6 grid gap-4 sm:grid-cols-3">
-              <StatCard
-                label="Final score"
-                value={`${score}%`}
-                helper={`${passedCount} of ${evaluatedCount} challenges cleared.`}
-                accent={score >= PASS_THRESHOLD ? 'text-blue-600' : 'text-rose-600'}
-              />
-              <StatCard label="Time spent" value={formatTime(elapsedTime)} helper="Measured from quiz start." />
-              <StatCard label="Pass rate" value={`${passRate || 0}%`} helper="Derived from backend feedback." />
-            </div>
-
-            <div className="mt-6 space-y-4">
-              {displayedQuestions.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
-                  No questions were returned for this attempt.
-                </div>
-              ) : (
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {displayedQuestions.map((question, index) => (
-                    <QuestionCard key={`${question.TestName}-${index}`} question={question} index={index} showResult />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              <button type="button" onClick={startQuiz} className={primaryButtonClasses}>
-                Run another simulation
-              </button>
-              <button type="button" onClick={resetQuiz} className={secondaryButtonClasses}>
-                Reset session
+                {includeAdvanced ? 'Hide extra CKS scenarios' : 'Show extra CKS scenarios (not graded)'}
               </button>
             </div>
-          </section>
-        )}
+          )}
+        </section>
 
-        <footer className="pb-6 text-center text-xs text-slate-400">
-          Crafted with care for SREs, platform engineers, and anyone taming clusters in production.
-        </footer>
+        <section className="h-[70vh] min-h-0 border-t border-line lg:h-auto lg:border-t-0" aria-label="Terminal">
+          <TerminalPanel isVisible />
+        </section>
       </div>
     </div>
   );

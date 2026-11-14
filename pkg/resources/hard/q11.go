@@ -10,16 +10,15 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-func CreateNetPolRule(clientset *kubernetes.Clientset) utils.Result {
-	netPol, err := clientset.NetworkingV1().NetworkPolicies("colors").Get(context.TODO(), "allow-policy-colors", metav1.GetOptions{})
+func CreateNetPolRule(ctx context.Context, clientset kubernetes.Interface) utils.Result {
+	netPol, err := clientset.NetworkingV1().NetworkPolicies("colors").Get(ctx, "allow-policy-colors", metav1.GetOptions{})
 
-	passed := err == nil && hasCorrectIngressRule(netPol.Spec.Ingress)
-
-	return utils.Result{
-		TestName:   "Question 11 - Create a network policy allow-policy-colors to allow redmobile-webserver to access bluemobile-dbcache",
-		Passed:     passed,
-		Difficulty: "Hard",
+	var report utils.Report
+	if report.Found(err, "NetworkPolicy", "allow-policy-colors", "colors") {
+		report.Expect(hasCorrectIngressRule(netPol.Spec.Ingress),
+			"No ingress rule lets the redmobile-webserver pods reach the bluemobile-dbcache port.")
 	}
+	return report.Result("Question 11 - Create a network policy allow-policy-colors to allow redmobile-webserver to access bluemobile-dbcache", "Hard")
 }
 
 // hasCorrectIngressRule checks if the network policy has the correct ingress rule

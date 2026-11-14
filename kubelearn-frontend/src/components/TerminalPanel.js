@@ -42,22 +42,29 @@ const TerminalPanel = ({ isVisible }) => {
     setSocket(ws);
     setStatus(STATUS.CONNECTING);
 
-    ws.onopen = () => setStatus(STATUS.OPEN);
-    ws.onclose = () => setStatus(STATUS.CLOSED);
+    // Once this effect is cleaned up the socket is stale: its late events
+    // (for example the error from closing it while still connecting) must not
+    // touch the panel, which by then belongs to a newer connection.
+    let stale = false;
+
+    ws.onopen = () => {
+      if (!stale) setStatus(STATUS.OPEN);
+    };
+    ws.onclose = () => {
+      if (!stale) setStatus(STATUS.CLOSED);
+    };
     ws.onerror = (event) => {
+      if (stale) return;
       const detail = event?.message || '';
       console.warn(`[KubeLearn] Terminal connection error${detail ? `: ${detail}` : ''}`, event);
       setStatus(STATUS.ERROR);
       setLines((prev) => [...prev, 'Connection error. Verify the backend service is running on port 8083.']);
     };
     ws.onmessage = (event) => {
+      if (stale) return;
       setLines((prev) => {
         const incoming = event.data.trim();
         if (!incoming) {
-          return prev;
-        }
-        const lastLine = prev[prev.length - 1];
-        if (lastLine && lastLine.trim() === incoming) {
           return prev;
         }
         return [...prev, incoming];
@@ -65,6 +72,7 @@ const TerminalPanel = ({ isVisible }) => {
     };
 
     return () => {
+      stale = true;
       ws.close();
       setSocket(null);
     };
@@ -145,47 +153,37 @@ const TerminalPanel = ({ isVisible }) => {
     [STATUS.ERROR]: 'Error',
   }[status];
 
-  const statusBadgeClasses = {
-    [STATUS.CONNECTING]: 'bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-200',
-    [STATUS.OPEN]: 'bg-blue-100 text-blue-700 ring-1 ring-inset ring-blue-200',
-    [STATUS.CLOSED]: 'bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200',
-    [STATUS.ERROR]: 'bg-rose-100 text-rose-700 ring-1 ring-inset ring-rose-200',
+  const statusDot = {
+    [STATUS.CONNECTING]: 'bg-warn',
+    [STATUS.OPEN]: 'bg-pass',
+    [STATUS.CLOSED]: 'bg-muted',
+    [STATUS.ERROR]: 'bg-fail',
   }[status];
 
   const canReconnect = status === STATUS.ERROR || status === STATUS.CLOSED;
+  const chromeButton =
+    'rounded px-2 py-1 text-sm text-muted transition-colors hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-kube-soft';
 
   return (
-    <div className="flex h-[720px] w-full flex-col overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-50 p-6 font-mono shadow-[0_30px_80px_rgba(15,23,42,0.12)] lg:h-[760px]">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1">
-            <div className="flex gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
-              <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-              <span className="h-2.5 w-2.5 rounded-full bg-blue-400" />
-            </div>
-            <span className="text-[0.65rem] font-semibold uppercase tracking-[0.32em] text-slate-500">Terminal</span>
-          </div>
-          <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${statusBadgeClasses}`}>
-            {statusText}
-          </span>
-          {canReconnect && (
-            <button
-              type="button"
-              onClick={handleReconnect}
-              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-blue-300 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
-            >
-              Reconnect
-            </button>
-          )}
-        </div>
+    <div className="flex h-full min-h-0 flex-col bg-term">
+      <header className="flex items-center gap-4 border-b border-line px-4 py-2">
+        <h2 className="text-sm font-semibold text-fg">Terminal</h2>
+        <p className="flex items-center gap-2 text-sm text-muted">
+          <span className={`h-2 w-2 rounded-full ${statusDot}`} aria-hidden="true" />
+          {statusText}
+        </p>
+        {canReconnect && (
+          <button type="button" onClick={handleReconnect} className={chromeButton}>
+            Reconnect
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {
             clearTerminal();
             setCommand('');
           }}
-          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-blue-300 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+          className={`ml-auto ${chromeButton}`}
         >
           Clear
         </button>
@@ -193,33 +191,41 @@ const TerminalPanel = ({ isVisible }) => {
 
       <div
         ref={outputRef}
-        className="mt-5 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-4 font-mono text-sm text-slate-700 shadow-inner shadow-slate-200/70"
+        role="log"
+        aria-label="Terminal output"
+        className="min-h-0 flex-1 overflow-auto px-4 py-3 font-mono text-[13px] leading-relaxed text-fg"
       >
         {lines.length === 0 ? (
-          <p className="text-slate-500">> Awaiting command… try `kubectl get pods`</p>
+          <p className="text-muted">Commands run on your machine, against the current kubectl context. Try: kubectl get pods -A</p>
         ) : (
           lines.map((line, index) => (
-            <pre key={`${line}-${index}`} className="whitespace-pre-wrap text-slate-700">
+            <pre
+              key={`${line}-${index}`}
+              className={`w-max whitespace-pre font-mono ${line.startsWith('> ') ? 'mt-3 text-kube-soft first:mt-0' : ''}`}
+            >
               {line}
             </pre>
           ))
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-4">
-        <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 shadow-sm">
-          <span className="text-sm font-semibold text-blue-600">kubelearner$</span>
-          <input
-            type="text"
-            value={command}
-            onChange={(event) => setCommand(event.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a command and press Enter"
-            className="flex-1 bg-transparent py-3 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
-            disabled={status !== STATUS.OPEN}
-            aria-label="Terminal command input"
-          />
-        </div>
+      <form onSubmit={handleSubmit} className="flex items-center gap-3 border-t border-line px-4 py-3 font-mono text-[13px]">
+        <span className="font-medium text-kube-soft" aria-hidden="true">
+          $
+        </span>
+        <input
+          type="text"
+          value={command}
+          onChange={(event) => setCommand(event.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={status === STATUS.OPEN ? 'Type a command and press Enter' : 'Terminal is not connected'}
+          className="min-w-0 flex-1 bg-transparent text-fg placeholder:text-muted/70 focus:outline-none"
+          disabled={status !== STATUS.OPEN}
+          aria-label="Terminal command input"
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
       </form>
     </div>
   );
