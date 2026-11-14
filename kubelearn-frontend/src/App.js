@@ -63,13 +63,22 @@ const API = 'http://localhost:8083';
 
 // Exam tracks offered on the start screen. "all" runs every question.
 const TRACKS = [
-  { id: 'all', label: 'All', about: 'Every question' },
-  { id: 'Core', label: 'Core', about: 'General Kubernetes practice' },
+  { id: 'all', label: 'All', about: 'Every track' },
+  { id: 'Core', label: 'Core', about: 'General' },
   { id: 'CKS', label: 'CKS', about: 'Security' },
   { id: 'CKNE', label: 'CKNE', about: 'Networking' },
 ];
 
-const inTrack = (track) => (question) => track === 'all' || question.Track === track;
+const DIFFICULTIES = [
+  { id: 'all', label: 'Any' },
+  { id: 'Easy', label: 'Easy' },
+  { id: 'Medium', label: 'Medium' },
+  { id: 'Hard', label: 'Hard' },
+];
+
+// Selects the questions of a track and a difficulty; "all" matches anything.
+const matching = (track, difficulty) => (question) =>
+  (track === 'all' || question.Track === track) && (difficulty === 'all' || question.Difficulty === difficulty);
 
 const difficultyColor = {
   easy: 'text-kube-soft',
@@ -112,6 +121,88 @@ const formatTime = (seconds) => {
   return `${minutes}:${remainingSeconds}`;
 };
 
+// Signal-style bars for the difficulty: one filled bar for easy, two for
+// medium, three for hard.
+const DifficultyBars = ({ value }) => {
+  const level = value?.toLowerCase?.();
+  const filled = { easy: 1, medium: 2, hard: 3 }[level] ?? 0;
+  return (
+    <svg viewBox="0 0 18 16" className={`h-4 w-[18px] shrink-0 ${difficultyColor[level] || 'text-muted'}`} aria-hidden="true">
+      {[0, 1, 2].map((bar) => {
+        const height = 6 + bar * 5;
+        return (
+          <rect
+            key={bar}
+            x={bar * 6.5}
+            y={16 - height}
+            width="4.5"
+            height={height}
+            rx="1"
+            fill="currentColor"
+            opacity={bar < filled ? 1 : 0.22}
+          />
+        );
+      })}
+    </svg>
+  );
+};
+
+// The bars with the level written next to them, so the information does not
+// depend on colour or shape alone.
+const Difficulty = ({ value }) => (
+  <span className={`inline-flex items-center gap-2 text-sm ${difficultyColor[value?.toLowerCase?.()] || 'text-muted'}`}>
+    <DifficultyBars value={value} />
+    {value || 'Unknown'}
+  </span>
+);
+
+// One option of a filter on the start screen: a radio button drawn as a tile.
+//
+// Every tile has the same two lines (name with count, then a detail of fixed
+// height) and fills its grid cell, so both filters line up exactly.
+const Choice = ({ name, value, selected, onSelect, ariaLabel, label, count, children }) => (
+  <label
+    className={`block h-full cursor-pointer rounded-md border px-4 py-3 transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-kube-soft ${
+      selected ? 'border-kube bg-kube/15' : 'border-line hover:border-kube-soft'
+    }`}
+  >
+    <input
+      type="radio"
+      name={name}
+      value={value}
+      checked={selected}
+      onChange={() => onSelect(value)}
+      className="sr-only"
+      aria-label={ariaLabel}
+    />
+    <span className="block whitespace-nowrap text-base font-semibold text-fg">
+      {label} <span className="font-normal tabular-nums text-muted">{count}</span>
+    </span>
+    <span className="mt-1 flex h-5 items-center whitespace-nowrap text-sm text-muted">{children}</span>
+  </label>
+);
+
+const choiceGrid = 'mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4';
+
+// One question as a card, for the grid on the start screen.
+const QuestionCard = ({ question, number, showTrack }) => {
+  const titleId = useId();
+  return (
+    <li aria-labelledby={titleId} className="flex flex-col rounded-lg border border-line bg-panel p-4">
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-mono text-sm tabular-nums text-muted" aria-hidden="true">
+          {number}
+        </span>
+        <Difficulty value={question.Difficulty} />
+      </div>
+      <h3 id={titleId} className="mt-3 break-words text-[0.95rem] font-normal leading-relaxed text-fg">
+        {renderInline(extractObjective(question.TestName))}
+      </h3>
+      {showTrack && question.Track && <p className="mt-auto pt-3 text-sm text-muted">{question.Track}</p>}
+    </li>
+  );
+};
+
 // One question as a list row. The left edge shows its state once it has been
 // checked: green when solved, red when not.
 const QuestionRow = ({ question, number, showResult, showTrack = false, failedLabel = 'Review needed' }) => {
@@ -123,7 +214,7 @@ const QuestionRow = ({ question, number, showResult, showTrack = false, failedLa
   return (
     <li
       aria-labelledby={titleId}
-      className={`grid break-inside-avoid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 border-b border-l-2 border-b-line px-5 py-4 ${edge}`}
+      className={`grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 border-b border-l-2 border-b-line px-5 py-4 ${edge}`}
     >
       <span className="pt-0.5 font-mono text-sm tabular-nums text-muted" aria-hidden="true">
         {number}
@@ -132,10 +223,8 @@ const QuestionRow = ({ question, number, showResult, showTrack = false, failedLa
         <h3 id={titleId} className="break-words text-[0.95rem] font-normal leading-relaxed text-fg">
           {renderInline(objective)}
         </h3>
-        <p className="mt-1.5 flex flex-wrap items-baseline gap-x-3 text-sm">
-          <span className={difficultyColor[question.Difficulty?.toLowerCase?.()] || 'text-muted'}>
-            {question.Difficulty || 'Unknown'}
-          </span>
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-3 text-sm">
+          <Difficulty value={question.Difficulty} />
           {showTrack && question.Track && <span className="text-muted">{question.Track}</span>}
           {question.Advanced && <span className="text-muted">Extra scenario, not graded</span>}
           {hasResult && (
@@ -177,7 +266,13 @@ function App() {
   // Every question as described by the backend; null until it answers.
   const [catalog, setCatalog] = useState(null);
 
-  const trackQuery = track === 'all' ? '' : `?track=${track.toLowerCase()}`;
+  const [difficulty, setDifficulty] = useState('all');
+
+  // Query string that scopes the backend evaluation to the chosen filters.
+  const filters = new URLSearchParams();
+  if (track !== 'all') filters.set('track', track.toLowerCase());
+  if (difficulty !== 'all') filters.set('difficulty', difficulty.toLowerCase());
+  const trackQuery = filters.toString() ? `?${filters}` : '';
 
   useEffect(() => {
     let cancelled = false;
@@ -207,14 +302,14 @@ function App() {
         setQuestions(data);
         setIsFallback(false);
       } else {
-        setQuestions(FALLBACK_QUESTIONS.filter(inTrack(track)));
+        setQuestions(FALLBACK_QUESTIONS.filter(matching(track, difficulty)));
         setIsFallback(true);
       }
     } catch (err) {
       const reason = err instanceof Error ? err.message : 'Unknown error';
       console.warn(`[KubeLearn] Unable to fetch questions: ${reason}`);
       setError('Unable to sync the questions. Make sure the backend is running and try again.');
-      setQuestions(FALLBACK_QUESTIONS.filter(inTrack(track)));
+      setQuestions(FALLBACK_QUESTIONS.filter(matching(track, difficulty)));
       setIsFallback(true);
     } finally {
       setIsLoading(false);
@@ -281,6 +376,7 @@ function App() {
         passedQuestions,
         duration: elapsedTime,
         track,
+        difficulty,
         completedAt: new Date().toISOString(),
       });
     } catch (err) {
@@ -319,9 +415,11 @@ function App() {
 
   // Before an attempt the list is a preview of the chosen track; during and
   // after it, the questions the backend evaluated.
-  const preview = (catalog ?? FALLBACK_QUESTIONS).filter(inTrack(track));
+  const available = catalog ?? FALLBACK_QUESTIONS;
+  const preview = available.filter(matching(track, difficulty));
   const evaluatedQuestions = quizStarted ? questions : preview;
-  const trackCount = (id) => (catalog ?? FALLBACK_QUESTIONS).filter(inTrack(id)).length;
+  const trackCount = (id) => available.filter(matching(id, difficulty)).length;
+  const difficultyCount = (id) => available.filter(matching(track, id)).length;
   const trackLabel = TRACKS.find((item) => item.id === track)?.label ?? track;
   const showExtras = track === 'all' || track === 'CKS';
   const displayedQuestions = useMemo(
@@ -337,49 +435,59 @@ function App() {
   // Start screen: what this is, one action, and the real question list.
   if (!quizStarted) {
     return (
-      <main className="mx-auto max-w-5xl px-6 py-14 sm:py-20">
+      <main className="mx-auto max-w-[90rem] px-6 py-14 sm:py-20">
         <h1 className="text-4xl font-semibold tracking-tight text-fg sm:text-5xl">KubeLearn</h1>
         <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted">
           Hands-on Kubernetes questions. Solve each one in your cluster from the built-in terminal, then check your
           answers against the live cluster.
         </p>
 
-        <fieldset className="mt-10">
-          <legend className="text-sm text-muted">Choose what to practise</legend>
-          <div className="mt-3 flex flex-wrap gap-3">
-            {TRACKS.map((item) => {
-              const selected = item.id === track;
-              const count = trackCount(item.id);
-              return (
-                <label
+        <div className="mt-10 grid max-w-6xl gap-x-10 gap-y-6 lg:grid-cols-2">
+          <fieldset className="min-w-0">
+            <legend className="text-sm text-muted">Track</legend>
+            <div className={choiceGrid}>
+              {TRACKS.map((item) => (
+                <Choice
                   key={item.id}
-                  className={`cursor-pointer rounded-md border px-4 py-3 transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-kube-soft ${
-                    selected ? 'border-kube bg-kube/15' : 'border-line hover:border-kube-soft'
-                  }`}
+                  name="track"
+                  value={item.id}
+                  selected={item.id === track}
+                  onSelect={setTrack}
+                  ariaLabel={`${item.label} track, ${trackCount(item.id)} questions`}
+                  label={item.label}
+                  count={trackCount(item.id)}
                 >
-                  <input
-                    type="radio"
-                    name="track"
-                    value={item.id}
-                    checked={selected}
-                    onChange={() => setTrack(item.id)}
-                    className="sr-only"
-                    aria-label={`${item.label} track, ${count} questions`}
-                  />
-                  <span className="block text-base font-semibold text-fg">
-                    {item.label} <span className="font-normal tabular-nums text-muted">{count}</span>
-                  </span>
-                  <span className="block text-sm text-muted">{item.about}</span>
-                </label>
-              );
-            })}
-          </div>
-          {!catalog && (
-            <p className="mt-3 text-sm text-warn">
-              The backend is not answering, so only the built-in Core list is shown. Start it with make backend-start.
-            </p>
-          )}
-        </fieldset>
+                  {item.about}
+                </Choice>
+              ))}
+            </div>
+          </fieldset>
+
+          <fieldset className="min-w-0">
+            <legend className="text-sm text-muted">Difficulty</legend>
+            <div className={choiceGrid}>
+              {DIFFICULTIES.map((item) => (
+                <Choice
+                  key={item.id}
+                  name="difficulty"
+                  value={item.id}
+                  selected={item.id === difficulty}
+                  onSelect={setDifficulty}
+                  ariaLabel={`${item.label} difficulty, ${difficultyCount(item.id)} questions`}
+                  label={item.label}
+                  count={difficultyCount(item.id)}
+                >
+                  {item.id === 'all' ? 'Every level' : <DifficultyBars value={item.id} />}
+                </Choice>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+        {!catalog && (
+          <p className="mt-4 text-sm text-warn">
+            The backend is not answering, so only the built-in Core list is shown. Start it with make backend-start.
+          </p>
+        )}
 
         <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
           <button
@@ -400,15 +508,9 @@ function App() {
         </div>
 
         <h2 className="mt-16 text-lg font-semibold text-fg">The questions</h2>
-        <ol className="mt-4 border-t border-line lg:columns-2 lg:gap-x-10">
+        <ol className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {numbered.map(({ question, number }) => (
-            <QuestionRow
-              key={question.TestName}
-              question={question}
-              number={number}
-              showResult={false}
-              showTrack={track === 'all'}
-            />
+            <QuestionCard key={question.TestName} question={question} number={number} showTrack={track === 'all'} />
           ))}
         </ol>
       </main>
@@ -479,7 +581,9 @@ function App() {
     <div className="flex min-h-screen flex-col lg:h-screen">
       <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line bg-panel px-5 py-3">
         <p className="text-base font-semibold text-fg">
-          KubeLearn{track !== 'all' && <span className="font-normal text-muted"> {trackLabel}</span>}
+          KubeLearn
+          {track !== 'all' && <span className="font-normal text-muted"> {trackLabel}</span>}
+          {difficulty !== 'all' && <span className="font-normal text-muted"> {difficulty}</span>}
         </p>
         <p className="font-mono text-base tabular-nums text-fg" role="timer" aria-label="Time elapsed">
           {formatTime(elapsedTime)}

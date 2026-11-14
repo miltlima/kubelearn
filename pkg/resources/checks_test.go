@@ -676,7 +676,7 @@ func TestScore(t *testing.T) {
 
 func evaluate(t *testing.T, cs resources.Clients) []utils.Result {
 	t.Helper()
-	results, err := resources.Evaluate(context.Background(), cs, "")
+	results, err := resources.Evaluate(context.Background(), cs, resources.Filter{})
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -689,7 +689,7 @@ func TestEvaluateReportsContextErrors(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	results, err := resources.Evaluate(ctx, clients(solvedCluster()...), "")
+	results, err := resources.Evaluate(ctx, clients(solvedCluster()...), resources.Filter{})
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want context.Canceled", err)
 	}
@@ -823,7 +823,7 @@ func TestTracks(t *testing.T) {
 	want := map[string]int{resources.TrackCore: 26, resources.TrackCKS: 11, resources.TrackCKNE: 17}
 	total := 0
 	for track, count := range want {
-		results, err := resources.Evaluate(context.Background(), clients(), track)
+		results, err := resources.Evaluate(context.Background(), clients(), resources.Filter{Track: track})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -922,5 +922,50 @@ func TestSecurityAndNetworkFeedback(t *testing.T) {
 	// The gateway with only the HTTP listener still solves question 51.
 	if r := result(t, "q51", httpOnly); !r.Passed {
 		t.Errorf("q51 rejected a valid HTTP gateway: %s", r.Feedback)
+	}
+}
+
+func TestDifficultyFilter(t *testing.T) {
+	total := 0
+	for _, difficulty := range resources.Difficulties {
+		results, err := resources.Evaluate(context.Background(), clients(), resources.Filter{Difficulty: difficulty})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(results) == 0 {
+			t.Errorf("no %s questions", difficulty)
+		}
+		for _, r := range results {
+			if r.Difficulty != difficulty {
+				t.Errorf("%q is %s in a %s evaluation", r.TestName, r.Difficulty, difficulty)
+			}
+		}
+		total += len(results)
+	}
+	if total != len(resources.Questions) {
+		t.Errorf("difficulties add up to %d questions, want %d", total, len(resources.Questions))
+	}
+
+	// Both filters combine.
+	results, err := resources.Evaluate(context.Background(), clients(), resources.Filter{Track: resources.TrackCKS, Difficulty: "Hard"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range results {
+		if r.Track != resources.TrackCKS || r.Difficulty != "Hard" {
+			t.Errorf("%q (%s, %s) does not match CKS + Hard", r.TestName, r.Track, r.Difficulty)
+		}
+	}
+	if len(results) != 4 {
+		t.Errorf("CKS has %d hard questions, want 4", len(results))
+	}
+
+	for name, want := range map[string]string{"": "", "ALL": "", "hard": "Hard", "Medium": "Medium"} {
+		if got, ok := resources.ParseDifficulty(name); !ok || got != want {
+			t.Errorf("ParseDifficulty(%q) = %q, %v", name, got, ok)
+		}
+	}
+	if _, ok := resources.ParseDifficulty("extreme"); ok {
+		t.Errorf("ParseDifficulty accepted an unknown level")
 	}
 }

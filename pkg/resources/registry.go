@@ -130,16 +130,49 @@ func ParseTrack(name string) (track string, ok bool) {
 	return "", false
 }
 
-// Evaluate runs the checks of a track ("" for all of them) against the
-// cluster, in question order.
+// Difficulties lists the difficulty levels in ascending order.
+var Difficulties = []string{"Easy", "Medium", "Hard"}
+
+// ParseDifficulty resolves a difficulty name, ignoring case. An empty name or
+// "all" means every level and returns "". ok is false for an unknown name.
+func ParseDifficulty(name string) (difficulty string, ok bool) {
+	if name == "" || strings.EqualFold(name, "all") {
+		return "", true
+	}
+	for _, known := range Difficulties {
+		if strings.EqualFold(name, known) {
+			return known, true
+		}
+	}
+	return "", false
+}
+
+// Filter selects which questions to evaluate. Empty fields select everything.
+type Filter struct {
+	Track      string
+	Difficulty string
+}
+
+// Evaluate runs the checks selected by filter against the cluster, in
+// question order.
 //
 // It stops and returns the context error if ctx is cancelled or its deadline
 // passes, so an unreachable cluster is reported as an error instead of as
 // every question failing.
-func Evaluate(ctx context.Context, clients Clients, track string) ([]utils.Result, error) {
+func Evaluate(ctx context.Context, clients Clients, filter Filter) ([]utils.Result, error) {
+	// The difficulty is declared inside each check, so it is looked up in the
+	// catalog to skip a question without running it.
+	var described []utils.Result
+	if filter.Difficulty != "" {
+		described = Catalog()
+	}
+
 	results := make([]utils.Result, 0, len(Questions))
-	for _, question := range Questions {
-		if track != "" && question.Track != track {
+	for i, question := range Questions {
+		if filter.Track != "" && question.Track != filter.Track {
+			continue
+		}
+		if filter.Difficulty != "" && described[i].Difficulty != filter.Difficulty {
 			continue
 		}
 		if err := ctx.Err(); err != nil {
@@ -169,7 +202,7 @@ func Catalog() []utils.Result {
 			Kube:    fake.NewSimpleClientset(),
 			Dynamic: dynamicfake.NewSimpleDynamicClient(runtime.NewScheme()),
 		}
-		results, _ := Evaluate(context.Background(), empty, "")
+		results, _ := Evaluate(context.Background(), empty, Filter{})
 		for i := range results {
 			results[i].Passed = false
 			results[i].Feedback = ""
