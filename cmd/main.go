@@ -15,64 +15,144 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"kubelearn/pkg/k8s"
-	"kubelearn/pkg/resources/easy"
-	"kubelearn/pkg/resources/hard"
-	"kubelearn/pkg/resources/medium"
+	"kubelearn/pkg/resources"
 	"kubelearn/pkg/utils"
 
 	"github.com/gorilla/websocket"
 	"k8s.io/client-go/kubernetes"
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+// listenAddr is loopback-only: the /terminal endpoint runs shell commands, so
+// the server must never be reachable from other machines.
+const listenAddr = "127.0.0.1:8083"
+
+// allowedOrigins holds the browser origins allowed to call the API and open
+// the terminal WebSocket. Override the default (the local frontend) with a
+// comma-separated list in KUBELEARN_ALLOWED_ORIGINS.
+var allowedOrigins = parseAllowedOrigins(os.Getenv("KUBELEARN_ALLOWED_ORIGINS"))
+
+func parseAllowedOrigins(raw string) map[string]bool {
+	origins := map[string]bool{}
+	for _, origin := range strings.Split(raw, ",") {
+		origin = strings.TrimRight(strings.TrimSpace(origin), "/")
+		if origin != "" {
+			origins[origin] = true
+		}
+	}
+	if len(origins) == 0 {
+		origins["http://localhost:3000"] = true
+		origins["http://127.0.0.1:3000"] = true
+	}
+	return origins
 }
 
-// runMakeCommand runs a Makefile target and logs the output.
-func runMakeCommand(target string) error {
+// originAllowed reports whether the request comes from an allowed origin.
+// Browsers always send Origin on WebSocket handshakes, so a missing header is
+// rejected too.
+func originAllowed(r *http.Request) bool {
+	return allowedOrigins[r.Header.Get("Origin")]
+}
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: originAllowed,
+}
+
+// setupTargets are the Makefile targets run by /setup, in order: provision
+// the cluster and switch the kubectl context, then apply the lab manifests.
+var setupTargets = []string{"infra-up", "manifests-apply"}
+
+// setupRunning guards against overlapping /setup runs.
+var setupRunning atomic.Bool
+
+// runMakeCommand runs a Makefile target in dir and logs the output.
+// It is a variable so tests can replace it.
+var runMakeCommand = func(dir, target string) error {
 	cmd := exec.Command("make", target)
-	cmd.Dir = "../"
+	cmd.Dir = dir
 	cmd.Stdout = log.Writer()
 	cmd.Stderr = log.Writer()
 	return cmd.Run()
 }
 
-// setupEnvironment triggers the setup process using the Makefile.
+// projectRoot returns the directory holding the project Makefile: the
+// KUBELEARN_ROOT environment variable, or the working directory.
+func projectRoot() (string, error) {
+	root := os.Getenv("KUBELEARN_ROOT")
+	if root == "" {
+		root = "."
+	}
+	for _, name := range []string{"Makefile", "makefile"} {
+		if info, err := os.Stat(filepath.Join(root, name)); err == nil && !info.IsDir() {
+			return root, nil
+		}
+	}
+	return "", fmt.Errorf("no Makefile found in %q: start the backend from the repository root or set KUBELEARN_ROOT", root)
+}
+
+// setupEnvironment provisions the lab in the background using the Makefile.
+// It only accepts POST, since it changes infrastructure.
 func setupEnvironment(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	root, err := projectRoot()
+	if err != nil {
+		log.Printf("Cannot start environment setup: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !setupRunning.CompareAndSwap(false, true) {
+		http.Error(w, "environment setup already running", http.StatusConflict)
+		return
+	}
+
 	go func() {
+		defer setupRunning.Store(false)
 		log.Println("Starting environment setup...")
-		if err := runMakeCommand("init"); err != nil {
-			log.Printf("Error initializing Terraform: %v", err)
-			return
+		for _, target := range setupTargets {
+			if err := runMakeCommand(root, target); err != nil {
+				log.Printf("Environment setup failed at 'make %s': %v", target, err)
+				return
+			}
 		}
-		if err := runMakeCommand("apply"); err != nil {
-			log.Printf("Error applying Terraform configurations: %v", err)
-			return
-		}
-		if err := runMakeCommand("all"); err != nil {
-			log.Printf("Error applying Kubernetes manifests: %v", err)
-		}
+		log.Println("Environment setup finished")
 	}()
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusAccepted)
 	w.Write([]byte("Environment setup started"))
 }
 
-// CORS middleware
+// withCORS rejects requests from origins that are not allowed and sets the
+// CORS headers for the ones that are. Requests without an Origin header
+// (curl, same-machine tools) pass through.
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		enableCors(&w)
+		if origin := r.Header.Get("Origin"); origin != "" {
+			if !originAllowed(r) {
+				http.Error(w, "origin not allowed", http.StatusForbidden)
+				return
+			}
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		}
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -81,44 +161,39 @@ func withCORS(next http.Handler) http.Handler {
 	})
 }
 
-func enableCors(w *http.ResponseWriter) {
-	(*w).Header().Set("Access-Control-Allow-Origin", "*")
-	(*w).Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-	(*w).Header().Set("Access-Control-Allow-Headers", "Content-Type")
+// evaluationTimeout bounds how long one request may spend querying the
+// cluster for all questions.
+var evaluationTimeout = 20 * time.Second
+
+// evaluate checks every question, giving up when the client disconnects or
+// evaluationTimeout passes. On failure it writes the error response and
+// returns false.
+func evaluate(w http.ResponseWriter, r *http.Request, clientset kubernetes.Interface) ([]utils.Result, bool) {
+	ctx, cancel := context.WithTimeout(r.Context(), evaluationTimeout)
+	defer cancel()
+
+	results, err := resources.Evaluate(ctx, clientset)
+	if err == nil {
+		return results, true
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		log.Printf("Cluster evaluation timed out after %s", evaluationTimeout)
+		http.Error(w, "timed out waiting for the Kubernetes cluster", http.StatusGatewayTimeout)
+	} else {
+		log.Printf("Cluster evaluation aborted: %v", err)
+		http.Error(w, "cluster evaluation aborted", http.StatusServiceUnavailable)
+	}
+	return nil, false
 }
 
-func getQuestions(w http.ResponseWriter, clientset *kubernetes.Clientset) {
-	questions := []utils.Result{
-		easy.CreatePod(clientset),                       // Question 1 - Easy
-		medium.CreateDeployment(clientset),              // Question 2 - Medium
-		hard.CreateDeploymentAndService(clientset),      // Question 3 - Hard
-		easy.CreateNamespace(clientset),                 // Question 4 - Easy
-		medium.CreateConfigMap(clientset),               // Question 5 - Medium
-		medium.CreateLabel(clientset),                   // Question 6 - Medium
-		medium.CreatePersistentVolume(clientset),        // Question 7 - Medium
-		medium.CreatePersistentVolumeClaim(clientset),   // Question 8 - Medium
-		hard.CreatePodVolumeClaim(clientset),            // Question 9 - Hard
-		hard.CheckPodError(clientset),                   // Question 10 - Hard
-		hard.CreateNetPolRule(clientset),                // Question 11 - Hard
-		easy.CreateSecret(clientset),                    // Question 12 - Easy
-		hard.CreatePodAddSecret(clientset),              // Question 13 - Hard
-		easy.CreateServiceAccount(clientset),            // Question 14 - Easy
-		medium.AddServiceAccountToDeployment(clientset), // Question 15 - Medium
-		medium.ChangeReplicaCount(clientset),            // Question 16 - Medium
-		medium.CreateHpa(clientset),                     // Question 17 - Medium
-		medium.AddSecurityContext(clientset),            // Question 18 - Medium
-		medium.AddLivenessProbe(clientset),              // Question 19 - Medium
-		easy.CreateDeploymentYellow(clientset),          // Question 20 - Easy
-		hard.CreateServiceForYellow(clientset),          // Question 21 - Hard
-		hard.CreateIngressYellow(clientset),             // Question 22 - Hard
-		hard.CreateRoleOne(clientset),                   // Question 23 - Hard
-		medium.CreateJob(clientset),                     // Question 24 - Medium
-		medium.CreateCronjob(clientset),                 // Question 25 - Medium
-		hard.CreateStatefulSet(clientset),               // Question 26 - Hard
+// getQuestions returns every question with its current pass/fail state.
+func getQuestions(w http.ResponseWriter, r *http.Request, clientset kubernetes.Interface) {
+	results, ok := evaluate(w, r, clientset)
+	if !ok {
+		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(questions)
+	json.NewEncoder(w).Encode(results)
 }
 
 func startQuiz(w http.ResponseWriter, r *http.Request) {
@@ -126,49 +201,34 @@ func startQuiz(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Quiz started"))
 }
 
-func finishQuiz(w http.ResponseWriter, clientset *kubernetes.Clientset) {
-	questions := []utils.Result{
-		easy.CreatePod(clientset),                       // Question 1 - Easy
-		medium.CreateDeployment(clientset),              // Question 2 - Medium
-		hard.CreateDeploymentAndService(clientset),      // Question 3 - Hard
-		easy.CreateNamespace(clientset),                 // Question 4 - Easy
-		medium.CreateConfigMap(clientset),               // Question 5 - Medium
-		medium.CreateLabel(clientset),                   // Question 6 - Medium
-		medium.CreatePersistentVolume(clientset),        // Question 7 - Medium
-		medium.CreatePersistentVolumeClaim(clientset),   // Question 8 - Medium
-		hard.CreatePodVolumeClaim(clientset),            // Question 9 - Hard
-		hard.CheckPodError(clientset),                   // Question 10 - Hard
-		hard.CreateNetPolRule(clientset),                // Question 11 - Hard
-		easy.CreateSecret(clientset),                    // Question 12 - Easy
-		hard.CreatePodAddSecret(clientset),              // Question 13 - Hard
-		easy.CreateServiceAccount(clientset),            // Question 14 - Easy
-		medium.AddServiceAccountToDeployment(clientset), // Question 15 - Medium
-		medium.ChangeReplicaCount(clientset),            // Question 16 - Medium
-		medium.CreateHpa(clientset),                     // Question 17 - Medium
-		medium.AddSecurityContext(clientset),            // Question 18 - Medium
-		medium.AddLivenessProbe(clientset),              // Question 19 - Medium
-		easy.CreateDeploymentYellow(clientset),          // Question 20 - Easy
-		hard.CreateServiceForYellow(clientset),          // Question 21 - Hard
-		hard.CreateIngressYellow(clientset),             // Question 22 - Hard
-		hard.CreateRoleOne(clientset),                   // Question 23 - Hard
-		medium.CreateJob(clientset),                     // Question 24 - Medium
-		medium.CreateCronjob(clientset),                 // Question 25 - Medium
-		hard.CreateStatefulSet(clientset),               // Question 26 - Hard
+// finishQuiz re-evaluates the cluster and returns the score together with the
+// per-question results it was computed from.
+func finishQuiz(w http.ResponseWriter, r *http.Request, clientset kubernetes.Interface) {
+	results, ok := evaluate(w, r, clientset)
+	if !ok {
+		return
 	}
-
-	correctAnswers := 0
-	for _, question := range questions {
-		if question.Passed {
-			correctAnswers++
-		}
-	}
-	totalQuestions := len(questions)
-	score := (float64(correctAnswers) / float64(totalQuestions)) * 100
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"score": score,
+		"score":   resources.Score(results),
+		"results": results,
 	})
+}
+
+// runTerminalCommand runs one shell command line and returns everything it
+// printed (stdout and stderr). When the command fails, the failure reason is
+// appended after its output, so the user still sees the command's own error
+// message.
+func runTerminalCommand(command string) []byte {
+	output, err := exec.Command("sh", "-c", command).CombinedOutput()
+	if err != nil {
+		if len(output) > 0 && output[len(output)-1] != '\n' {
+			output = append(output, '\n')
+		}
+		output = append(output, []byte(fmt.Sprintf("[%v]\n", err))...)
+	}
+	return output
 }
 
 // WebSocket terminal handler
@@ -193,20 +253,17 @@ func handleWebSocketTerminal(w http.ResponseWriter, r *http.Request) {
 
 		// Quando o buffer recebe um newline, processa o comando
 		if strings.Contains(buffer.String(), "\n") {
-			cmd := exec.Command("sh", "-c", buffer.String())
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("Error: %v\n", err)))
-			} else {
-				conn.WriteMessage(websocket.TextMessage, output)
-			}
+			conn.WriteMessage(websocket.TextMessage, runTerminalCommand(buffer.String()))
 			buffer.Reset()
 		}
 	}
 }
 
 func main() {
-	config := k8s.LoadKubeConfig()
+	config, err := k8s.LoadKubeConfig()
+	if err != nil {
+		log.Fatalf("Failed to load Kubernetes configuration: %v", err)
+	}
 	clientset, err := k8s.NewClientSet(config)
 	if err != nil {
 		log.Fatalf("Error creating Kubernetes clientset: %v", err)
@@ -214,11 +271,11 @@ func main() {
 
 	http.HandleFunc("/setup", setupEnvironment)
 	http.HandleFunc("/questions", func(w http.ResponseWriter, r *http.Request) {
-		getQuestions(w, clientset)
+		getQuestions(w, r, clientset)
 	})
 	http.HandleFunc("/start", startQuiz)
 	http.HandleFunc("/finish", func(w http.ResponseWriter, r *http.Request) {
-		finishQuiz(w, clientset)
+		finishQuiz(w, r, clientset)
 	})
 
 	// WebSocket endpoint for terminal
@@ -227,5 +284,6 @@ func main() {
 	})
 
 	// Start the server with CORS middleware applied globally
-	log.Fatal(http.ListenAndServe(":8083", withCORS(http.DefaultServeMux)))
+	log.Printf("KubeLearn backend listening on http://%s", listenAddr)
+	log.Fatal(http.ListenAndServe(listenAddr, withCORS(http.DefaultServeMux)))
 }

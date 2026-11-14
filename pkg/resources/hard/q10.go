@@ -8,14 +8,15 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-func CheckPodError(clientset *kubernetes.Clientset) utils.Result {
-	pod, err := clientset.CoreV1().Pods("bandai").Get(context.TODO(), "gundamv", metav1.GetOptions{})
+func CheckPodError(ctx context.Context, clientset kubernetes.Interface) utils.Result {
+	pod, err := clientset.CoreV1().Pods("bandai").Get(ctx, "gundamv", metav1.GetOptions{})
 
-	passed := err == nil && pod.Spec.Containers[0].Image == "nginx:alpine"
-
-	return utils.Result{
-		TestName:   "Question 10 - Identify and fix the issue in the pod gundamv in namespace bandai",
-		Passed:     passed,
-		Difficulty: "Hard",
+	var report utils.Report
+	if report.Found(err, "Pod", "gundamv", "bandai") {
+		// Deliberately vague: finding the cause is the exercise.
+		container := utils.FirstContainer(pod.Spec)
+		report.Expect(container != nil && container.Image == "nginx:alpine",
+			"The pod is not fixed yet. Find out why its container cannot start.")
 	}
+	return report.Result("Question 10 - Identify and fix the issue in the pod gundamv in namespace bandai", "Hard")
 }

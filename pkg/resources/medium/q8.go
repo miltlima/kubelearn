@@ -8,13 +8,15 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-func CreatePersistentVolumeClaim(clientset *kubernetes.Clientset) utils.Result {
-	pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(context.TODO(), "unicorn-pvc", metav1.GetOptions{})
-	passed := err == nil && pvc.Spec.Resources.Requests.Storage().String() == "400Mi" && pvc.Spec.AccessModes[0] == "ReadWriteMany"
+func CreatePersistentVolumeClaim(ctx context.Context, clientset kubernetes.Interface) utils.Result {
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "unicorn-pvc", metav1.GetOptions{})
 
-	return utils.Result{
-		TestName:   "Question 8 - Create a persistent volume claim unicorn-pvc with capacity 400Mi and access mode ReadWriteMany",
-		Passed:     passed,
-		Difficulty: "Medium",
+	var report utils.Report
+	if report.Found(err, "PersistentVolumeClaim", "unicorn-pvc", "default") {
+		requested := pvc.Spec.Resources.Requests.Storage().String()
+		report.Expect(requested == "400Mi", "Requested storage is %s, expected 400Mi.", requested)
+		report.Expect(len(pvc.Spec.AccessModes) > 0 && pvc.Spec.AccessModes[0] == "ReadWriteMany",
+			"The first access mode should be ReadWriteMany.")
 	}
+	return report.Result("Question 8 - Create a persistent volume claim unicorn-pvc with capacity 400Mi and access mode ReadWriteMany", "Medium")
 }

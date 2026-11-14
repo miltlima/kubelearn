@@ -8,13 +8,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-func CreateServiceAccount(clientset *kubernetes.Clientset) utils.Result {
-	sa, err := clientset.CoreV1().ServiceAccounts("default").Get(context.TODO(), "america-sa", metav1.GetOptions{})
-	passed := err == nil && sa.Name == "america-sa"
+func CreateServiceAccount(ctx context.Context, clientset kubernetes.Interface) utils.Result {
+	_, err := clientset.CoreV1().ServiceAccounts("default").Get(ctx, "america-sa", metav1.GetOptions{})
 
-	return utils.Result{
-		TestName:   "Question 14 - Create a service account america-sa in default namespace",
-		Passed:     passed,
-		Difficulty: "Easy",
-	}
+	var report utils.Report
+	report.Found(err, "ServiceAccount", "america-sa", "default")
+	return report.Result("Question 14 - Create a service account america-sa in default namespace", "Easy")
 }

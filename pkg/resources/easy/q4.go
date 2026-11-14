@@ -2,20 +2,16 @@ package easy
 
 import (
 	"context"
-
 	"kubelearn/pkg/utils"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
-func CreateNamespace(clientset *kubernetes.Clientset) utils.Result {
-	namespace, err := clientset.CoreV1().Namespaces().Get(context.TODO(), "europe", metav1.GetOptions{})
-	passed := err == nil && namespace.Name == "europe"
+func CreateNamespace(ctx context.Context, clientset kubernetes.Interface) utils.Result {
+	_, err := clientset.CoreV1().Namespaces().Get(ctx, "europe", metav1.GetOptions{})
 
-	return utils.Result{
-		TestName:   "Question 4 - Create a namespace europe",
-		Passed:     passed,
-		Difficulty: "Easy",
-	}
+	var report utils.Report
+	report.Found(err, "Namespace", "europe", "")
+	return report.Result("Question 4 - Create a namespace europe", "Easy")
 }

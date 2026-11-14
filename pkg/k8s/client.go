@@ -1,24 +1,20 @@
 package k8s
 
 import (
-	"log"
-	"os"
-	"path/filepath"
-
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-func LoadKubeConfig() *rest.Config {
-	kubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config")
-
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-	if err != nil {
-		log.Fatalf("Failed to load Kubernetes configuration: %v", err)
-	}
-
-	return config
+// LoadKubeConfig resolves the cluster configuration the same way kubectl
+// does: the files listed in the KUBECONFIG environment variable, or
+// ~/.kube/config (%USERPROFILE%\.kube\config on Windows), using the current
+// context. Inside a pod it falls back to the in-cluster configuration.
+func LoadKubeConfig() (*rest.Config, error) {
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		clientcmd.NewDefaultClientConfigLoadingRules(),
+		&clientcmd.ConfigOverrides{},
+	).ClientConfig()
 }
 
 func NewClientSet(config *rest.Config) (*kubernetes.Clientset, error) {

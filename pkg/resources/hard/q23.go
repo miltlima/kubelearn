@@ -2,31 +2,30 @@ package hard
 
 import (
 	"context"
+	"strings"
+
 	"kubelearn/pkg/utils"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
-func CreateRoleOne(clientset *kubernetes.Clientset) utils.Result {
-	role, err := clientset.RbacV1().Roles("fruits").Get(context.TODO(), "apple-one", metav1.GetOptions{})
+func CreateRoleOne(ctx context.Context, clientset kubernetes.Interface) utils.Result {
+	role, err := clientset.RbacV1().Roles("fruits").Get(ctx, "apple-one", metav1.GetOptions{})
 
-	expectedVerbs := []string{"get", "list", "watch"}
-	passed := err == nil && len(role.Rules) > 0 && len(role.Rules[0].Resources) > 0 &&
-		role.Rules[0].Resources[0] == "pods"
+	var report utils.Report
+	if report.Found(err, "Role", "apple-one", "fruits") &&
+		report.Expect(len(role.Rules) > 0, "The role has no rules.") {
+		rule := role.Rules[0]
+		report.Expect(len(rule.Resources) > 0 && rule.Resources[0] == "pods", "The first rule should apply to the pods resource.")
 
-	if passed {
-		for _, verb := range expectedVerbs {
-			if !utils.Contains(role.Rules[0].Verbs, verb) {
-				passed = false
-				break
+		var missing []string
+		for _, verb := range []string{"get", "list", "watch"} {
+			if !utils.Contains(rule.Verbs, verb) {
+				missing = append(missing, verb)
 			}
 		}
+		report.Expect(len(missing) == 0, "Missing verbs: %s.", strings.Join(missing, ", "))
 	}
-
-	return utils.Result{
-		TestName:   "Question 23 - Create a role apple-one with verbs get, list, watch in namespace fruits",
-		Passed:     passed,
-		Difficulty: "Hard",
-	}
+	return report.Result("Question 23 - Create a role apple-one with verbs get, list, watch in namespace fruits", "Hard")
 }
