@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"k8s.io/apimachinery/pkg/runtime"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 
 	"kubelearn/pkg/resources"
@@ -179,7 +181,10 @@ func TestSetupRunsExistingTargetsOnce(t *testing.T) {
 	}
 
 	close(release)
-	got := []string{first[1], (<-calls)[1]}
+	got := []string{first[1]}
+	for len(got) < len(setupTargets) {
+		got = append(got, (<-calls)[1])
+	}
 	if first[0] != root {
 		t.Errorf("make ran in %q, want %q", first[0], root)
 	}
@@ -207,20 +212,20 @@ func TestSetupTargetsExistInMakefile(t *testing.T) {
 
 func TestQuestionsEndpointListsEveryQuestion(t *testing.T) {
 	rec := httptest.NewRecorder()
-	getQuestions(rec, httptest.NewRequest(http.MethodGet, "/questions", nil), fake.NewSimpleClientset())
+	getQuestions(rec, httptest.NewRequest(http.MethodGet, "/questions", nil), emptyCluster())
 
 	var results []utils.Result
 	if err := json.Unmarshal(rec.Body.Bytes(), &results); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if len(results) != len(resources.Checks) {
-		t.Errorf("got %d questions, want %d", len(results), len(resources.Checks))
+	if len(results) != len(resources.Questions) {
+		t.Errorf("got %d questions, want %d", len(results), len(resources.Questions))
 	}
 }
 
 func TestFinishEndpointReturnsScoreAndResults(t *testing.T) {
 	rec := httptest.NewRecorder()
-	finishQuiz(rec, httptest.NewRequest(http.MethodGet, "/finish", nil), fake.NewSimpleClientset())
+	finishQuiz(rec, httptest.NewRequest(http.MethodGet, "/finish", nil), emptyCluster())
 
 	var body struct {
 		Score   *float64       `json:"score"`
@@ -232,8 +237,8 @@ func TestFinishEndpointReturnsScoreAndResults(t *testing.T) {
 	if body.Score == nil || *body.Score != 0 {
 		t.Errorf("score on an empty cluster = %v, want 0", body.Score)
 	}
-	if len(body.Results) != len(resources.Checks) {
-		t.Errorf("got %d results, want %d", len(body.Results), len(resources.Checks))
+	if len(body.Results) != len(resources.Questions) {
+		t.Errorf("got %d results, want %d", len(body.Results), len(resources.Questions))
 	}
 }
 
@@ -245,8 +250,8 @@ func TestEvaluationTimeoutReturnsGatewayTimeout(t *testing.T) {
 	t.Cleanup(func() { evaluationTimeout = original })
 
 	handlers := map[string]func(http.ResponseWriter, *http.Request){
-		"/questions": func(w http.ResponseWriter, r *http.Request) { getQuestions(w, r, fake.NewSimpleClientset()) },
-		"/finish":    func(w http.ResponseWriter, r *http.Request) { finishQuiz(w, r, fake.NewSimpleClientset()) },
+		"/questions": func(w http.ResponseWriter, r *http.Request) { getQuestions(w, r, emptyCluster()) },
+		"/finish":    func(w http.ResponseWriter, r *http.Request) { finishQuiz(w, r, emptyCluster()) },
 	}
 	for path, handler := range handlers {
 		rec := httptest.NewRecorder()
@@ -263,7 +268,7 @@ func TestEvaluationStopsWhenClientDisconnects(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/questions", nil).WithContext(ctx)
 
 	rec := httptest.NewRecorder()
-	getQuestions(rec, req, fake.NewSimpleClientset())
+	getQuestions(rec, req, emptyCluster())
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status %d, want 503", rec.Code)
 	}
@@ -285,5 +290,51 @@ func TestTerminalCommandKeepsOutputOnFailure(t *testing.T) {
 func TestTerminalCommandSuccessOutputIsUnchanged(t *testing.T) {
 	if got := string(runTerminalCommand("echo ok")); got != "ok\n" {
 		t.Errorf("output = %q, want %q", got, "ok\n")
+	}
+}
+
+func emptyCluster() resources.Clients {
+	return resources.Clients{
+		Kube:    fake.NewSimpleClientset(),
+		Dynamic: dynamicfake.NewSimpleDynamicClient(runtime.NewScheme()),
+	}
+}
+
+func TestQuestionsCanBeLimitedToATrack(t *testing.T) {
+	for query, want := range map[string]int{"": len(resources.Questions), "?track=all": len(resources.Questions), "?track=cks": 11, "?track=CKNE": 17, "?track=core": 26} {
+		rec := httptest.NewRecorder()
+		getQuestions(rec, httptest.NewRequest(http.MethodGet, "/questions"+query, nil), emptyCluster())
+
+		var results []utils.Result
+		if err := json.Unmarshal(rec.Body.Bytes(), &results); err != nil {
+			t.Fatalf("%q: invalid JSON: %v", query, err)
+		}
+		if len(results) != want {
+			t.Errorf("%q: got %d questions, want %d", query, len(results), want)
+		}
+	}
+}
+
+func TestUnknownTrackIsRejected(t *testing.T) {
+	rec := httptest.NewRecorder()
+	finishQuiz(rec, httptest.NewRequest(http.MethodGet, "/finish?track=cka", nil), emptyCluster())
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status %d, want 400", rec.Code)
+	}
+}
+
+func TestCatalogEndpointNeedsNoCluster(t *testing.T) {
+	rec := httptest.NewRecorder()
+	getCatalog(rec, httptest.NewRequest(http.MethodGet, "/catalog", nil))
+
+	var entries []utils.Result
+	if err := json.Unmarshal(rec.Body.Bytes(), &entries); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(entries) != len(resources.Questions) {
+		t.Errorf("got %d entries, want %d", len(entries), len(resources.Questions))
+	}
+	if entries[len(entries)-1].Track != resources.TrackCKNE {
+		t.Errorf("last entry track = %q, want CKNE", entries[len(entries)-1].Track)
 	}
 }

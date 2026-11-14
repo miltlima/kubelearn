@@ -1,0 +1,65 @@
+# Lab resources for the CKS (security) questions.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hardening
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: audit-labs
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: secure-egress
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: auditor
+  namespace: audit-labs
+---
+# Question 34: this service account has far more access than it needs.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dev
+  namespace: hardening
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dev-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: dev
+  namespace: hardening
+---
+# Question 35: this deployment runs with privileges it should not have.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legacy-app
+  namespace: hardening
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: legacy-app
+  template:
+    metadata:
+      labels:
+        app: legacy-app
+    spec:
+      hostPID: true
+      hostNetwork: true
+      containers:
+      - name: legacy-app
+        image: nginx:alpine
+        securityContext:
+          privileged: true

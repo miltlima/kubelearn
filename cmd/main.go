@@ -33,7 +33,7 @@ import (
 	"kubelearn/pkg/utils"
 
 	"github.com/gorilla/websocket"
-	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/dynamic"
 )
 
 // listenAddr is loopback-only: the /terminal endpoint runs shell commands, so
@@ -72,8 +72,9 @@ var upgrader = websocket.Upgrader{
 }
 
 // setupTargets are the Makefile targets run by /setup, in order: provision
-// the cluster and switch the kubectl context, then apply the lab manifests.
-var setupTargets = []string{"infra-up", "manifests-apply"}
+// the cluster and switch the kubectl context, apply the lab manifests, then
+// install the Gateway API used by the networking questions.
+var setupTargets = []string{"infra-up", "manifests-apply", "gateway-api-install"}
 
 // setupRunning guards against overlapping /setup runs.
 var setupRunning atomic.Bool
@@ -168,11 +169,20 @@ var evaluationTimeout = 20 * time.Second
 // evaluate checks every question, giving up when the client disconnects or
 // evaluationTimeout passes. On failure it writes the error response and
 // returns false.
-func evaluate(w http.ResponseWriter, r *http.Request, clientset kubernetes.Interface) ([]utils.Result, bool) {
+//
+// The optional "track" query parameter (core, cks, ckne or all) limits the
+// evaluation to the questions of that track.
+func evaluate(w http.ResponseWriter, r *http.Request, clients resources.Clients) ([]utils.Result, bool) {
+	track, ok := resources.ParseTrack(r.URL.Query().Get("track"))
+	if !ok {
+		http.Error(w, "unknown track: use core, cks, ckne or all", http.StatusBadRequest)
+		return nil, false
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), evaluationTimeout)
 	defer cancel()
 
-	results, err := resources.Evaluate(ctx, clientset)
+	results, err := resources.Evaluate(ctx, clients, track)
 	if err == nil {
 		return results, true
 	}
@@ -187,13 +197,20 @@ func evaluate(w http.ResponseWriter, r *http.Request, clientset kubernetes.Inter
 }
 
 // getQuestions returns every question with its current pass/fail state.
-func getQuestions(w http.ResponseWriter, r *http.Request, clientset kubernetes.Interface) {
-	results, ok := evaluate(w, r, clientset)
+func getQuestions(w http.ResponseWriter, r *http.Request, clients resources.Clients) {
+	results, ok := evaluate(w, r, clients)
 	if !ok {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
+}
+
+// getCatalog lists every question without consulting the cluster, so the
+// frontend can show them before an attempt starts.
+func getCatalog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resources.Catalog())
 }
 
 func startQuiz(w http.ResponseWriter, r *http.Request) {
@@ -203,8 +220,8 @@ func startQuiz(w http.ResponseWriter, r *http.Request) {
 
 // finishQuiz re-evaluates the cluster and returns the score together with the
 // per-question results it was computed from.
-func finishQuiz(w http.ResponseWriter, r *http.Request, clientset kubernetes.Interface) {
-	results, ok := evaluate(w, r, clientset)
+func finishQuiz(w http.ResponseWriter, r *http.Request, clients resources.Clients) {
+	results, ok := evaluate(w, r, clients)
 	if !ok {
 		return
 	}
@@ -269,13 +286,20 @@ func main() {
 		log.Fatalf("Error creating Kubernetes clientset: %v", err)
 	}
 
+	dynamicClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		log.Fatalf("Error creating Kubernetes dynamic client: %v", err)
+	}
+	clients := resources.Clients{Kube: clientset, Dynamic: dynamicClient}
+
 	http.HandleFunc("/setup", setupEnvironment)
+	http.HandleFunc("/catalog", getCatalog)
 	http.HandleFunc("/questions", func(w http.ResponseWriter, r *http.Request) {
-		getQuestions(w, r, clientset)
+		getQuestions(w, r, clients)
 	})
 	http.HandleFunc("/start", startQuiz)
 	http.HandleFunc("/finish", func(w http.ResponseWriter, r *http.Request) {
-		finishQuiz(w, r, clientset)
+		finishQuiz(w, r, clients)
 	})
 
 	// WebSocket endpoint for terminal

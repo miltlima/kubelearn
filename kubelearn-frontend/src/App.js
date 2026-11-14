@@ -33,17 +33,12 @@ const BASE_QUESTIONS = [
 ];
 
 const ADVANCED_CKS_QUESTIONS = [
-  { difficulty: 'Hard', description: 'Run pod `nginx-apparmor` applying AppArmor profile `localhost/kubelearn-nginx`.' },
-  { difficulty: 'Hard', description: 'Launch pod `seccomp-default` with seccomp profile `runtime/default` and document how to verify it.' },
   { difficulty: 'Hard', description: 'Create pod that mounts projected volume with TLS cert/key secrets and exports them as env vars.' },
   { difficulty: 'Hard', description: 'Rotate secret `db-credentials` used by deployment `inventory-api` and roll pods to consume new values.' },
   { difficulty: 'Hard', description: 'Enable audit policy in namespace `audit-labs` to log Secret GET operations and produce one audited request.' },
-  { difficulty: 'Hard', description: 'Deploy pod `strict-security` forcing non-root UID, dropping all capabilities, adding only `NET_BIND_SERVICE`, and mounting root filesystem read-only.' },
-  { difficulty: 'Hard', description: 'Create NetworkPolicy in namespace `secure-egress` that denies all egress except UDP/53 to cluster DNS and TCP to CIDR `10.10.0.0/16`.' },
   { difficulty: 'Hard', description: 'Simulate encrypted storage: create CSI secret-backed volume for pod `vault-agent` and prove secret never appears in plain text on node.' },
   { difficulty: 'Hard', description: 'Author CronJob `etcd-backup` that runs daily, stores etcd snapshot to PVC, and deletes files older than 7 days.' },
   { difficulty: 'Hard', description: 'Deploy DaemonSet `falco-agent` watching privileged activity; trigger an alert by `exec` into a privileged pod and note event.' },
-  { difficulty: 'Hard', description: 'Configure PodSecurity `baseline` for namespace `baseline-labs` and `restricted` for `restricted-labs`, then validate compliance.' },
   { difficulty: 'Hard', description: 'Create pod `image-policy-test` that downloads from private registry using image policy webhook credentials stored in secret `policy-creds`.' },
 ];
 
@@ -59,9 +54,22 @@ const FALLBACK_QUESTIONS = BASE_QUESTIONS.map((item, idx) => ({
   id: idx + 1,
   TestName: `Question ${idx + 1} - ${item.description}`,
   Difficulty: item.difficulty,
+  Track: 'Core',
   Advanced: false,
   Passed: null,
 }));
+
+const API = 'http://localhost:8083';
+
+// Exam tracks offered on the start screen. "all" runs every question.
+const TRACKS = [
+  { id: 'all', label: 'All', about: 'Every question' },
+  { id: 'Core', label: 'Core', about: 'General Kubernetes practice' },
+  { id: 'CKS', label: 'CKS', about: 'Security' },
+  { id: 'CKNE', label: 'CKNE', about: 'Networking' },
+];
+
+const inTrack = (track) => (question) => track === 'all' || question.Track === track;
 
 const difficultyColor = {
   easy: 'text-kube-soft',
@@ -106,7 +114,7 @@ const formatTime = (seconds) => {
 
 // One question as a list row. The left edge shows its state once it has been
 // checked: green when solved, red when not.
-const QuestionRow = ({ question, number, showResult, failedLabel = 'Review needed' }) => {
+const QuestionRow = ({ question, number, showResult, showTrack = false, failedLabel = 'Review needed' }) => {
   const objective = extractObjective(question.TestName);
   const hasResult = showResult && typeof question.Passed === 'boolean';
   const titleId = useId();
@@ -128,7 +136,8 @@ const QuestionRow = ({ question, number, showResult, failedLabel = 'Review neede
           <span className={difficultyColor[question.Difficulty?.toLowerCase?.()] || 'text-muted'}>
             {question.Difficulty || 'Unknown'}
           </span>
-          {question.Advanced && <span className="text-muted">Advanced, not graded</span>}
+          {showTrack && question.Track && <span className="text-muted">{question.Track}</span>}
+          {question.Advanced && <span className="text-muted">Extra scenario, not graded</span>}
           {hasResult && (
             <span className={`font-semibold ${question.Passed ? 'text-pass' : 'text-fail'}`}>
               {question.Passed ? 'Passed' : failedLabel}
@@ -164,26 +173,48 @@ function App() {
   const [lastAttempt, setLastAttempt] = useState(null);
   const [isChecking, setIsChecking] = useState(false);
   const [lastCheckedAt, setLastCheckedAt] = useState(null);
+  const [track, setTrack] = useState('all');
+  // Every question as described by the backend; null until it answers.
+  const [catalog, setCatalog] = useState(null);
+
+  const trackQuery = track === 'all' ? '' : `?track=${track.toLowerCase()}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(`${API}/catalog`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled && Array.isArray(data) && data.length > 0) setCatalog(data);
+      } catch (err) {
+        // Backend not running: the start screen falls back to the built-in list.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fetchQuestions = async () => {
     setIsLoading(true);
     setError('');
     try {
-      const response = await fetch('http://localhost:8083/questions');
+      const response = await fetch(`${API}/questions${trackQuery}`);
       if (!response.ok) throw new Error('Failed to fetch questions');
       const data = await response.json();
       if (Array.isArray(data) && data.length > 0) {
         setQuestions(data);
         setIsFallback(false);
       } else {
-        setQuestions(FALLBACK_QUESTIONS);
+        setQuestions(FALLBACK_QUESTIONS.filter(inTrack(track)));
         setIsFallback(true);
       }
     } catch (err) {
       const reason = err instanceof Error ? err.message : 'Unknown error';
       console.warn(`[KubeLearn] Unable to fetch questions: ${reason}`);
       setError('Unable to sync the questions. Make sure the backend is running and try again.');
-      setQuestions(FALLBACK_QUESTIONS);
+      setQuestions(FALLBACK_QUESTIONS.filter(inTrack(track)));
       setIsFallback(true);
     } finally {
       setIsLoading(false);
@@ -197,7 +228,7 @@ function App() {
     setIsChecking(true);
     setError('');
     try {
-      const response = await fetch('http://localhost:8083/questions');
+      const response = await fetch(`${API}/questions${trackQuery}`);
       if (!response.ok) throw new Error(`Backend answered ${response.status}`);
       const data = await response.json();
       if (!Array.isArray(data) || data.length === 0) throw new Error('No questions returned');
@@ -228,7 +259,7 @@ function App() {
     setIsFinishing(true);
     setError('');
     try {
-      const response = await fetch('http://localhost:8083/finish');
+      const response = await fetch(`${API}/finish${trackQuery}`);
       if (!response.ok) throw new Error('Failed to finish quiz');
       const data = await response.json();
       const normalizedScore = Math.round(data.score);
@@ -249,6 +280,7 @@ function App() {
         totalQuestions: results.length,
         passedQuestions,
         duration: elapsedTime,
+        track,
         completedAt: new Date().toISOString(),
       });
     } catch (err) {
@@ -285,10 +317,16 @@ function App() {
     };
   }, [quizStarted, quizFinished]);
 
-  const evaluatedQuestions = questions.length ? questions : FALLBACK_QUESTIONS;
+  // Before an attempt the list is a preview of the chosen track; during and
+  // after it, the questions the backend evaluated.
+  const preview = (catalog ?? FALLBACK_QUESTIONS).filter(inTrack(track));
+  const evaluatedQuestions = quizStarted ? questions : preview;
+  const trackCount = (id) => (catalog ?? FALLBACK_QUESTIONS).filter(inTrack(id)).length;
+  const trackLabel = TRACKS.find((item) => item.id === track)?.label ?? track;
+  const showExtras = track === 'all' || track === 'CKS';
   const displayedQuestions = useMemo(
-    () => (includeAdvanced ? [...evaluatedQuestions, ...ADVANCED_QUESTIONS] : evaluatedQuestions),
-    [evaluatedQuestions, includeAdvanced],
+    () => (includeAdvanced && showExtras ? [...evaluatedQuestions, ...ADVANCED_QUESTIONS] : evaluatedQuestions),
+    [evaluatedQuestions, includeAdvanced, showExtras],
   );
 
   const evaluatedCount = evaluatedQuestions.length;
@@ -302,12 +340,56 @@ function App() {
       <main className="mx-auto max-w-5xl px-6 py-14 sm:py-20">
         <h1 className="text-4xl font-semibold tracking-tight text-fg sm:text-5xl">KubeLearn</h1>
         <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted">
-          {evaluatedCount} hands-on Kubernetes questions. Solve each one in your cluster from the built-in terminal,
-          then check your answers against the live cluster.
+          Hands-on Kubernetes questions. Solve each one in your cluster from the built-in terminal, then check your
+          answers against the live cluster.
         </p>
+
+        <fieldset className="mt-10">
+          <legend className="text-sm text-muted">Choose what to practise</legend>
+          <div className="mt-3 flex flex-wrap gap-3">
+            {TRACKS.map((item) => {
+              const selected = item.id === track;
+              const count = trackCount(item.id);
+              return (
+                <label
+                  key={item.id}
+                  className={`cursor-pointer rounded-md border px-4 py-3 transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-kube-soft ${
+                    selected ? 'border-kube bg-kube/15' : 'border-line hover:border-kube-soft'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="track"
+                    value={item.id}
+                    checked={selected}
+                    onChange={() => setTrack(item.id)}
+                    className="sr-only"
+                    aria-label={`${item.label} track, ${count} questions`}
+                  />
+                  <span className="block text-base font-semibold text-fg">
+                    {item.label} <span className="font-normal tabular-nums text-muted">{count}</span>
+                  </span>
+                  <span className="block text-sm text-muted">{item.about}</span>
+                </label>
+              );
+            })}
+          </div>
+          {!catalog && (
+            <p className="mt-3 text-sm text-warn">
+              The backend is not answering, so only the built-in Core list is shown. Start it with make backend-start.
+            </p>
+          )}
+        </fieldset>
+
         <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
-          <button type="button" onClick={startQuiz} className={primaryButtonClasses} aria-label="Start quiz simulation">
-            Start attempt
+          <button
+            type="button"
+            onClick={startQuiz}
+            className={primaryButtonClasses}
+            aria-label="Start quiz simulation"
+            disabled={evaluatedCount === 0}
+          >
+            Start attempt with {evaluatedCount} questions
           </button>
           {lastAttempt && (
             <p className="text-sm text-muted">
@@ -320,7 +402,13 @@ function App() {
         <h2 className="mt-16 text-lg font-semibold text-fg">The questions</h2>
         <ol className="mt-4 border-t border-line lg:columns-2 lg:gap-x-10">
           {numbered.map(({ question, number }) => (
-            <QuestionRow key={question.TestName} question={question} number={number} showResult={false} />
+            <QuestionRow
+              key={question.TestName}
+              question={question}
+              number={number}
+              showResult={false}
+              showTrack={track === 'all'}
+            />
           ))}
         </ol>
       </main>
@@ -390,7 +478,9 @@ function App() {
   return (
     <div className="flex min-h-screen flex-col lg:h-screen">
       <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line bg-panel px-5 py-3">
-        <p className="text-base font-semibold text-fg">KubeLearn</p>
+        <p className="text-base font-semibold text-fg">
+          KubeLearn{track !== 'all' && <span className="font-normal text-muted"> {trackLabel}</span>}
+        </p>
         <p className="font-mono text-base tabular-nums text-fg" role="timer" aria-label="Time elapsed">
           {formatTime(elapsedTime)}
         </p>
@@ -448,21 +538,24 @@ function App() {
                   question={question}
                   number={index + 1}
                   showResult={lastCheckedAt !== null}
+                  showTrack={track === 'all'}
                   failedLabel="Not solved yet"
                 />
               ))}
             </ol>
           )}
-          <div className="px-5 py-4">
-            <button
-              type="button"
-              onClick={() => setIncludeAdvanced((prev) => !prev)}
-              className={quietButtonClasses}
-              aria-pressed={includeAdvanced}
-            >
-              {includeAdvanced ? 'Hide advanced scenarios' : 'Show advanced scenarios (not graded)'}
-            </button>
-          </div>
+          {showExtras && (
+            <div className="px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setIncludeAdvanced((prev) => !prev)}
+                className={quietButtonClasses}
+                aria-pressed={includeAdvanced}
+              >
+                {includeAdvanced ? 'Hide extra CKS scenarios' : 'Show extra CKS scenarios (not graded)'}
+              </button>
+            </div>
+          )}
         </section>
 
         <section className="h-[70vh] min-h-0 border-t border-line lg:h-auto lg:border-t-0" aria-label="Terminal">

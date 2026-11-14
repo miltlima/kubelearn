@@ -2,8 +2,15 @@ package resources_test
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
 	"testing"
 
@@ -12,17 +19,18 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	nodev1 "k8s.io/api/node/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/kubernetes"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
 	"kubelearn/pkg/resources"
-	"kubelearn/pkg/resources/medium"
 	"kubelearn/pkg/utils"
 )
 
@@ -33,15 +41,38 @@ type check struct {
 
 // allChecks names every registered check after its question number.
 var allChecks = func() []check {
-	checks := make([]check, 0, len(resources.Checks))
-	for i, fn := range resources.Checks {
-		checks = append(checks, check{fmt.Sprintf("q%d", i+1), fn})
+	checks := make([]check, 0, len(resources.Questions))
+	for i, question := range resources.Questions {
+		checks = append(checks, check{fmt.Sprintf("q%d", i+1), question.Check})
 	}
 	return checks
 }()
 
+// gatewayResources maps Gateway API kinds to their resource names. The fake
+// dynamic client would otherwise guess "gatewaies" for Gateway.
+var gatewayResources = map[string]string{"Gateway": "gateways", "HTTPRoute": "httproutes"}
+
+// clients builds an in-memory cluster holding objects. Custom resources
+// (unstructured objects) go to the dynamic client, the rest to the typed one.
+func clients(objects ...runtime.Object) resources.Clients {
+	dynamicClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+	var typed []runtime.Object
+	for _, object := range objects {
+		custom, ok := object.(*unstructured.Unstructured)
+		if !ok {
+			typed = append(typed, object)
+			continue
+		}
+		resource := custom.GroupVersionKind().GroupVersion().WithResource(gatewayResources[custom.GetKind()])
+		if err := dynamicClient.Tracker().Create(resource, custom.DeepCopy(), custom.GetNamespace()); err != nil {
+			panic(err)
+		}
+	}
+	return resources.Clients{Kube: fake.NewSimpleClientset(typed...), Dynamic: dynamicClient}
+}
+
 // runCheck runs one checker and converts a panic into a test failure.
-func runCheck(t *testing.T, c check, cs kubernetes.Interface) (passed bool) {
+func runCheck(t *testing.T, c check, cs resources.Clients) (passed bool) {
 	t.Helper()
 	defer func() {
 		if r := recover(); r != nil {
@@ -108,7 +139,7 @@ func solvedCluster() []runtime.Object {
 
 	pathType := networkingv1.PathTypePrefix
 
-	return []runtime.Object{
+	objects := []runtime.Object{
 		&corev1.Pod{ObjectMeta: meta("default", "nginx"), Spec: podSpec("nginx:alpine")},
 		deployment("default", "nginx-deployment", 4, podSpec("nginx:alpine")),
 		deployment("latam", "redis", 1, podSpec("redis:alpine")),
@@ -233,6 +264,240 @@ func solvedCluster() []runtime.Object {
 			Status:     appsv1.StatefulSetStatus{ReadyReplicas: 3},
 		},
 	}
+	return append(objects, append(solvedCKS(), solvedCKNE()...)...)
+}
+
+func serviceAccountSubject(name, namespace string) []rbacv1.Subject {
+	return []rbacv1.Subject{{Kind: "ServiceAccount", Name: name, Namespace: namespace}}
+}
+
+// solvedCKS returns objects that satisfy the security questions (27-37).
+func solvedCKS() []runtime.Object {
+	seccomp := podSpec("nginx:alpine")
+	seccomp.SecurityContext = &corev1.PodSecurityContext{
+		SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+	}
+
+	strict := podSpec("nginx:alpine")
+	strict.Containers[0].SecurityContext = &corev1.SecurityContext{
+		RunAsNonRoot:           ptr(true),
+		ReadOnlyRootFilesystem: ptr(true),
+		Capabilities: &corev1.Capabilities{
+			Drop: []corev1.Capability{"ALL"},
+			Add:  []corev1.Capability{"NET_BIND_SERVICE"},
+		},
+	}
+
+	sandboxed := podSpec("nginx:alpine")
+	sandboxed.RuntimeClassName = ptr("gvisor")
+
+	udp := corev1.ProtocolUDP
+	tcp := corev1.ProtocolTCP
+
+	return []runtime.Object{
+		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "baseline-labs", Labels: map[string]string{"pod-security.kubernetes.io/enforce": "baseline"}}},
+		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "restricted-labs", Labels: map[string]string{"pod-security.kubernetes.io/enforce": "restricted"}}},
+		&corev1.Pod{ObjectMeta: meta("hardening", "seccomp-default"), Spec: seccomp},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace:   "hardening",
+				Name:        "apparmor-default",
+				Annotations: map[string]string{"container.apparmor.security.beta.kubernetes.io/main": "runtime/default"},
+			},
+			Spec: podSpec("nginx:alpine"),
+		},
+		&corev1.Pod{ObjectMeta: meta("hardening", "strict-security"), Spec: strict},
+		&networkingv1.NetworkPolicy{
+			ObjectMeta: meta("secure-egress", "restrict-egress"),
+			Spec: networkingv1.NetworkPolicySpec{
+				PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
+				Egress: []networkingv1.NetworkPolicyEgressRule{
+					{Ports: []networkingv1.NetworkPolicyPort{{Protocol: &udp, Port: ptr(intstr.FromInt(53))}}},
+					{
+						To:    []networkingv1.NetworkPolicyPeer{{IPBlock: &networkingv1.IPBlock{CIDR: "10.10.0.0/16"}}},
+						Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp}},
+					},
+				},
+			},
+		},
+		&corev1.ServiceAccount{ObjectMeta: meta("hardening", "no-token-sa"), AutomountServiceAccountToken: ptr(false)},
+		&rbacv1.Role{
+			ObjectMeta: meta("audit-labs", "secret-reader"),
+			Rules:      []rbacv1.PolicyRule{{Resources: []string{"secrets"}, Verbs: []string{"get"}, ResourceNames: []string{"db-credentials"}}},
+		},
+		&rbacv1.RoleBinding{
+			ObjectMeta: meta("audit-labs", "secret-reader-binding"),
+			RoleRef:    rbacv1.RoleRef{Kind: "Role", Name: "secret-reader"},
+			Subjects:   serviceAccountSubject("auditor", "audit-labs"),
+		},
+		&rbacv1.RoleBinding{
+			ObjectMeta: meta("hardening", "dev-view"),
+			RoleRef:    rbacv1.RoleRef{Kind: "ClusterRole", Name: "view"},
+			Subjects:   serviceAccountSubject("dev", "hardening"),
+		},
+		deployment("hardening", "legacy-app", 1, podSpec("nginx:alpine")),
+		&corev1.Secret{ObjectMeta: meta("hardening", "api-keys"), Data: map[string][]byte{"token": []byte("s3cr3t")}, Immutable: ptr(true)},
+		&nodev1.RuntimeClass{ObjectMeta: metav1.ObjectMeta{Name: "gvisor"}, Handler: "runsc"},
+		&corev1.Pod{ObjectMeta: meta("hardening", "sandboxed"), Spec: sandboxed},
+	}
+}
+
+// selfSignedCertificate returns a PEM certificate for host.
+func selfSignedCertificate(host string) []byte {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	template := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: host}, DNSNames: []string{host}}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		panic(err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+}
+
+func webService(name string, spec corev1.ServiceSpec) *corev1.Service {
+	spec.Selector = map[string]string{"app": "web"}
+	if len(spec.Ports) == 0 {
+		spec.Ports = []corev1.ServicePort{{Port: 80}}
+	}
+	return &corev1.Service{ObjectMeta: meta("netlab", name), Spec: spec}
+}
+
+func gatewayObject(kind, name string, spec map[string]any) *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "gateway.networking.k8s.io/v1",
+		"kind":       kind,
+		"metadata":   map[string]any{"namespace": "netlab", "name": name},
+		"spec":       spec,
+	}}
+}
+
+func backendRef(name string, port int64, weight ...int64) map[string]any {
+	ref := map[string]any{"name": name, "port": port}
+	if len(weight) > 0 {
+		ref["weight"] = weight[0]
+	}
+	return ref
+}
+
+// solvedCKNE returns objects that satisfy the networking questions (38-54).
+func solvedCKNE() []runtime.Object {
+	ready := podSpec("nginx:alpine")
+	ready.Containers[0].ReadinessProbe = &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/", Port: intstr.FromInt(80)}},
+	}
+
+	dns := podSpec("nginx:alpine")
+	dns.DNSPolicy = corev1.DNSNone
+	dns.DNSConfig = &corev1.PodDNSConfig{
+		Nameservers: []string{"1.1.1.1"},
+		Searches:    []string{"netlab.svc.cluster.local"},
+		Options:     []corev1.PodDNSConfigOption{{Name: "ndots", Value: ptr("2")}},
+	}
+
+	pathType := networkingv1.PathTypePrefix
+	parent := []any{map[string]any{"name": "web-gateway"}}
+
+	return []runtime.Object{
+		webService("web-nodeport", corev1.ServiceSpec{Type: corev1.ServiceTypeNodePort, Ports: []corev1.ServicePort{{Port: 80, NodePort: 30080}}}),
+		webService("web-headless", corev1.ServiceSpec{ClusterIP: corev1.ClusterIPNone}),
+		&corev1.Service{
+			ObjectMeta: meta("netlab", "external-api"),
+			Spec:       corev1.ServiceSpec{Type: corev1.ServiceTypeExternalName, ExternalName: "api.example.com"},
+		},
+		webService("web-sticky", corev1.ServiceSpec{
+			SessionAffinity:       corev1.ServiceAffinityClientIP,
+			SessionAffinityConfig: &corev1.SessionAffinityConfig{ClientIP: &corev1.ClientIPConfig{TimeoutSeconds: ptr(int32(600))}},
+		}),
+		webService("web-local", corev1.ServiceSpec{Type: corev1.ServiceTypeNodePort, ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyLocal}),
+		deployment("netlab", "web", 2, ready),
+		&corev1.ConfigMap{
+			ObjectMeta: meta("kube-system", "coredns"),
+			Data: map[string]string{"Corefile": `.:53 {
+    errors
+    rewrite name legacy.internal web.netlab.svc.cluster.local
+    kubernetes cluster.local in-addr.arpa ip6.arpa
+    forward . /etc/resolv.conf
+}`},
+		},
+		&corev1.Pod{ObjectMeta: meta("netlab", "dns-custom"), Spec: dns},
+		&networkingv1.NetworkPolicy{
+			ObjectMeta: meta("netlab", "default-deny-ingress"),
+			Spec:       networkingv1.NetworkPolicySpec{PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}},
+		},
+		&networkingv1.NetworkPolicy{
+			ObjectMeta: meta("netlab", "api-from-frontend"),
+			Spec: networkingv1.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "api"}},
+				Ingress: []networkingv1.NetworkPolicyIngressRule{{
+					From:  []networkingv1.NetworkPolicyPeer{{NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"team": "frontend"}}}},
+					Ports: []networkingv1.NetworkPolicyPort{{Port: ptr(intstr.FromInt(8080))}},
+				}},
+			},
+		},
+		&networkingv1.NetworkPolicy{
+			ObjectMeta: meta("netlab", "web-egress-internet"),
+			Spec: networkingv1.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}},
+				PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
+				Egress: []networkingv1.NetworkPolicyEgressRule{{
+					To:    []networkingv1.NetworkPolicyPeer{{IPBlock: &networkingv1.IPBlock{CIDR: "0.0.0.0/0", Except: []string{"10.0.0.0/8"}}}},
+					Ports: []networkingv1.NetworkPolicyPort{{Port: ptr(intstr.FromInt(443))}},
+				}},
+			},
+		},
+		&corev1.Secret{
+			ObjectMeta: meta("netlab", "shop-tls"),
+			Type:       corev1.SecretTypeTLS,
+			Data:       map[string][]byte{"tls.crt": selfSignedCertificate("shop.example.com"), "tls.key": []byte("key")},
+		},
+		&networkingv1.Ingress{
+			ObjectMeta: meta("netlab", "shop"),
+			Spec: networkingv1.IngressSpec{
+				IngressClassName: ptr("nginx"),
+				TLS:              []networkingv1.IngressTLS{{Hosts: []string{"shop.example.com"}, SecretName: "shop-tls"}},
+				Rules: []networkingv1.IngressRule{{
+					Host: "shop.example.com",
+					IngressRuleValue: networkingv1.IngressRuleValue{HTTP: &networkingv1.HTTPIngressRuleValue{
+						Paths: []networkingv1.HTTPIngressPath{{
+							Path:     "/",
+							PathType: &pathType,
+							Backend: networkingv1.IngressBackend{Service: &networkingv1.IngressServiceBackend{
+								Name: "web", Port: networkingv1.ServiceBackendPort{Number: 80},
+							}},
+						}},
+					}},
+				}},
+			},
+		},
+		gatewayObject("Gateway", "web-gateway", map[string]any{
+			"gatewayClassName": "kubelearn",
+			"listeners": []any{
+				map[string]any{"name": "http", "protocol": "HTTP", "port": int64(80)},
+				map[string]any{
+					"name": "https", "protocol": "HTTPS", "port": int64(443), "hostname": "shop.example.com",
+					"tls": map[string]any{"mode": "Terminate", "certificateRefs": []any{map[string]any{"name": "shop-tls"}}},
+				},
+			},
+		}),
+		gatewayObject("HTTPRoute", "web-route", map[string]any{
+			"parentRefs": parent,
+			"hostnames":  []any{"shop.example.com"},
+			"rules": []any{
+				map[string]any{
+					"matches":     []any{map[string]any{"path": map[string]any{"type": "PathPrefix", "value": "/api"}}},
+					"backendRefs": []any{backendRef("api", 8080)},
+				},
+				map[string]any{"backendRefs": []any{backendRef("web", 80)}},
+			},
+		}),
+		gatewayObject("HTTPRoute", "web-canary", map[string]any{
+			"parentRefs": parent,
+			"hostnames":  []any{"canary.example.com"},
+			"rules":      []any{map[string]any{"backendRefs": []any{backendRef("web", 80, 90), backendRef("web-v2", 80, 10)}}},
+		}),
+	}
 }
 
 // stripped returns the solved cluster with every object reduced according to
@@ -313,7 +578,7 @@ func stripped(level int) []runtime.Object {
 }
 
 func TestSolvedClusterPassesEveryQuestion(t *testing.T) {
-	cs := fake.NewSimpleClientset(solvedCluster()...)
+	cs := clients(solvedCluster()...)
 	for _, c := range allChecks {
 		if !runCheck(t, c, cs) {
 			t.Errorf("%s: expected Passed=true on a solved cluster", c.name)
@@ -322,7 +587,7 @@ func TestSolvedClusterPassesEveryQuestion(t *testing.T) {
 }
 
 func TestEmptyClusterFailsEveryQuestionWithoutPanic(t *testing.T) {
-	cs := fake.NewSimpleClientset()
+	cs := clients()
 	for _, c := range allChecks {
 		if runCheck(t, c, cs) {
 			t.Errorf("%s: expected Passed=false on an empty cluster", c.name)
@@ -334,7 +599,7 @@ func TestEmptyClusterFailsEveryQuestionWithoutPanic(t *testing.T) {
 func TestIncompleteObjectsDoNotPanic(t *testing.T) {
 	for level := 0; level <= 1; level++ {
 		t.Run(fmt.Sprintf("level%d", level), func(t *testing.T) {
-			cs := fake.NewSimpleClientset(stripped(level)...)
+			cs := clients(stripped(level)...)
 			for _, c := range allChecks {
 				runCheck(t, c, cs)
 			}
@@ -358,7 +623,7 @@ func TestSecondObjectAloneDoesNotPass(t *testing.T) {
 			}
 		}
 	}
-	cs := fake.NewSimpleClientset(objects...)
+	cs := clients(objects...)
 	for _, c := range allChecks {
 		if c.name != "q3" && c.name != "q13" {
 			continue
@@ -374,18 +639,16 @@ func TestSecondObjectAloneDoesNotPass(t *testing.T) {
 // /finish.
 func TestLivenessProbeQuestionOnFreshLab(t *testing.T) {
 	fresh := &corev1.Pod{ObjectMeta: meta("shield", "mark50"), Spec: podSpec("nginx:alpine")}
-	cs := fake.NewSimpleClientset(fresh)
-	c := check{"q19", medium.AddLivenessProbe}
-	if runCheck(t, c, cs) {
+	if result(t, "q19", fresh).Passed {
 		t.Errorf("q19: expected Passed=false for a pod without liveness probe")
 	}
 }
 
 // The registry position defines the question number shown to the user.
 func TestRegistryOrderMatchesQuestionNumbers(t *testing.T) {
-	results := evaluate(t, fake.NewSimpleClientset())
-	if len(results) != len(resources.Checks) {
-		t.Fatalf("Evaluate returned %d results for %d checks", len(results), len(resources.Checks))
+	results := evaluate(t, clients())
+	if len(results) != len(resources.Questions) {
+		t.Fatalf("Evaluate returned %d results for %d checks", len(results), len(resources.Questions))
 	}
 	for i, result := range results {
 		prefix := fmt.Sprintf("Question %d - ", i+1)
@@ -399,10 +662,10 @@ func TestScore(t *testing.T) {
 	if got := resources.Score(nil); got != 0 {
 		t.Errorf("Score(nil) = %v, want 0", got)
 	}
-	if got := resources.Score(evaluate(t, fake.NewSimpleClientset())); got != 0 {
+	if got := resources.Score(evaluate(t, clients())); got != 0 {
 		t.Errorf("empty cluster score = %v, want 0", got)
 	}
-	if got := resources.Score(evaluate(t, fake.NewSimpleClientset(solvedCluster()...))); got != 100 {
+	if got := resources.Score(evaluate(t, clients(solvedCluster()...))); got != 100 {
 		t.Errorf("solved cluster score = %v, want 100", got)
 	}
 	half := []utils.Result{{Passed: true}, {Passed: false}}
@@ -411,9 +674,9 @@ func TestScore(t *testing.T) {
 	}
 }
 
-func evaluate(t *testing.T, cs kubernetes.Interface) []utils.Result {
+func evaluate(t *testing.T, cs resources.Clients) []utils.Result {
 	t.Helper()
-	results, err := resources.Evaluate(context.Background(), cs)
+	results, err := resources.Evaluate(context.Background(), cs, "")
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -426,7 +689,7 @@ func TestEvaluateReportsContextErrors(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	results, err := resources.Evaluate(ctx, fake.NewSimpleClientset(solvedCluster()...))
+	results, err := resources.Evaluate(ctx, clients(solvedCluster()...), "")
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want context.Canceled", err)
 	}
@@ -438,7 +701,7 @@ func TestEvaluateReportsContextErrors(t *testing.T) {
 // result runs the named question against a cluster holding objects.
 func result(t *testing.T, name string, objects ...runtime.Object) utils.Result {
 	t.Helper()
-	cs := fake.NewSimpleClientset(objects...)
+	cs := clients(objects...)
 	for _, c := range allChecks {
 		if c.name == name {
 			return c.fn(context.Background(), cs)
@@ -450,19 +713,19 @@ func result(t *testing.T, name string, objects ...runtime.Object) utils.Result {
 
 // Every unsolved question must say why; a solved one must not.
 func TestFeedbackIsPresentExactlyWhenFailing(t *testing.T) {
-	for _, r := range evaluate(t, fake.NewSimpleClientset()) {
+	for _, r := range evaluate(t, clients()) {
 		if r.Feedback == "" {
 			t.Errorf("%q failed on an empty cluster without feedback", r.TestName)
 		}
 	}
 	for level := 0; level <= 1; level++ {
-		for _, r := range evaluate(t, fake.NewSimpleClientset(stripped(level)...)) {
+		for _, r := range evaluate(t, clients(stripped(level)...)) {
 			if r.Passed != (r.Feedback == "") {
 				t.Errorf("level %d: %q has Passed=%v with feedback %q", level, r.TestName, r.Passed, r.Feedback)
 			}
 		}
 	}
-	for _, r := range evaluate(t, fake.NewSimpleClientset(solvedCluster()...)) {
+	for _, r := range evaluate(t, clients(solvedCluster()...)) {
 		if r.Feedback != "" {
 			t.Errorf("%q passed but carries feedback %q", r.TestName, r.Feedback)
 		}
@@ -510,11 +773,11 @@ func TestTroubleshootingFeedbackDoesNotRevealTheFix(t *testing.T) {
 // A request that fails for a reason other than "not found" is a cluster
 // problem and must be reported as such.
 func TestFeedbackReportsClusterErrors(t *testing.T) {
-	cs := fake.NewSimpleClientset()
-	cs.PrependReactor("get", "pods", func(k8stesting.Action) (bool, runtime.Object, error) {
+	kube := fake.NewSimpleClientset()
+	kube.PrependReactor("get", "pods", func(k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, errors.New("connection refused")
 	})
-	r := resources.Checks[0](context.Background(), cs)
+	r := resources.Questions[0].Check(context.Background(), resources.Clients{Kube: kube, Dynamic: clients().Dynamic})
 	if r.Passed || !strings.Contains(r.Feedback, "Could not read pod nginx from the cluster") ||
 		!strings.Contains(r.Feedback, "connection refused") {
 		t.Errorf("unexpected result for an unreachable cluster: %+v", r)
@@ -553,5 +816,111 @@ func TestSleepCommandIsAcceptedInAnyForm(t *testing.T) {
 	}
 	if r := result(t, "q26", sts); r.Passed {
 		t.Errorf("command sleep 60 was accepted")
+	}
+}
+
+func TestTracks(t *testing.T) {
+	want := map[string]int{resources.TrackCore: 26, resources.TrackCKS: 11, resources.TrackCKNE: 17}
+	total := 0
+	for track, count := range want {
+		results, err := resources.Evaluate(context.Background(), clients(), track)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(results) != count {
+			t.Errorf("track %s has %d questions, want %d", track, len(results), count)
+		}
+		for _, r := range results {
+			if r.Track != track {
+				t.Errorf("%q is tagged %q in a %s evaluation", r.TestName, r.Track, track)
+			}
+		}
+		total += count
+	}
+	if len(resources.Questions) != total {
+		t.Errorf("registry has %d questions, the tracks add up to %d", len(resources.Questions), total)
+	}
+
+	for name, wantTrack := range map[string]string{"": "", "all": "", "cks": "CKS", "CKNE": "CKNE", "Core": "Core"} {
+		if got, ok := resources.ParseTrack(name); !ok || got != wantTrack {
+			t.Errorf("ParseTrack(%q) = %q, %v", name, got, ok)
+		}
+	}
+	if _, ok := resources.ParseTrack("cka"); ok {
+		t.Errorf("ParseTrack accepted an unknown track")
+	}
+}
+
+// The catalog describes every question without a cluster and without results.
+func TestCatalog(t *testing.T) {
+	catalog := resources.Catalog()
+	if len(catalog) != len(resources.Questions) {
+		t.Fatalf("catalog has %d entries, want %d", len(catalog), len(resources.Questions))
+	}
+	for i, entry := range catalog {
+		if entry.TestName == "" || entry.Difficulty == "" || entry.Track != resources.Questions[i].Track {
+			t.Errorf("incomplete catalog entry %d: %+v", i+1, entry)
+		}
+		if entry.Passed || entry.Feedback != "" {
+			t.Errorf("catalog entry %d carries a result: %+v", i+1, entry)
+		}
+	}
+}
+
+func TestSecurityAndNetworkFeedback(t *testing.T) {
+	stillAdmin := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "dev-admin"},
+		RoleRef:    rbacv1.RoleRef{Kind: "ClusterRole", Name: "cluster-admin"},
+		Subjects:   serviceAccountSubject("dev", "hardening"),
+	}
+	privileged := podSpec("nginx:alpine")
+	privileged.HostPID = true
+	privileged.Containers[0].SecurityContext = &corev1.SecurityContext{Privileged: ptr(true)}
+	openEgress := &networkingv1.NetworkPolicy{
+		ObjectMeta: meta("secure-egress", "restrict-egress"),
+		Spec: networkingv1.NetworkPolicySpec{
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
+			Egress:      []networkingv1.NetworkPolicyEgressRule{{}},
+		},
+	}
+	plainCoreDNS := &corev1.ConfigMap{ObjectMeta: meta("kube-system", "coredns"), Data: map[string]string{"Corefile": ".:53 {\n    forward . /etc/resolv.conf\n}"}}
+	wrongCertificate := &corev1.Secret{
+		ObjectMeta: meta("netlab", "shop-tls"),
+		Type:       corev1.SecretTypeTLS,
+		Data:       map[string][]byte{"tls.crt": selfSignedCertificate("other.example.com"), "tls.key": []byte("key")},
+	}
+	httpOnly := gatewayObject("Gateway", "web-gateway", map[string]any{
+		"gatewayClassName": "kubelearn",
+		"listeners":        []any{map[string]any{"name": "http", "protocol": "HTTP", "port": int64(80)}},
+	})
+	evenSplit := gatewayObject("HTTPRoute", "web-canary", map[string]any{
+		"parentRefs": []any{map[string]any{"name": "web-gateway"}},
+		"hostnames":  []any{"canary.example.com"},
+		"rules":      []any{map[string]any{"backendRefs": []any{backendRef("web", 80, 50), backendRef("web-v2", 80, 50)}}},
+	})
+
+	cases := []struct {
+		question string
+		objects  []runtime.Object
+		want     string
+	}{
+		{"q34", append(solvedCKS(), stillAdmin), "Cluster role binding dev-admin still gives service account dev the cluster-admin role."},
+		{"q35", []runtime.Object{deployment("hardening", "legacy-app", 1, privileged)}, "Container main still runs privileged. The pods still share the host PID namespace."},
+		{"q31", []runtime.Object{openEgress}, "No egress rule allows DNS on UDP port 53. No egress rule allows TCP to CIDR 10.10.0.0/16. An egress rule without destinations or ports allows all traffic."},
+		{"q44", []runtime.Object{plainCoreDNS}, "The Corefile has no rewrite rule from legacy.internal to web.netlab.svc.cluster.local."},
+		{"q49", []runtime.Object{wrongCertificate}, "tls.crt is not a certificate for shop.example.com."},
+		{"q51", nil, "Gateway web-gateway not found in namespace netlab."},
+		{"q54", []runtime.Object{httpOnly}, "No listener accepts HTTPS on port 443."},
+		{"q53", []runtime.Object{evenSplit}, "No rule splits traffic 90 to service web and 10 to service web-v2 on port 80."},
+	}
+	for _, tc := range cases {
+		if got := result(t, tc.question, tc.objects...).Feedback; got != tc.want {
+			t.Errorf("%s: feedback %q, want %q", tc.question, got, tc.want)
+		}
+	}
+
+	// The gateway with only the HTTP listener still solves question 51.
+	if r := result(t, "q51", httpOnly); !r.Passed {
+		t.Errorf("q51 rejected a valid HTTP gateway: %s", r.Feedback)
 	}
 }

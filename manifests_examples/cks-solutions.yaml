@@ -1,0 +1,152 @@
+# Example answers for the CKS questions (27-37).
+# Questions 34 and 35 also need changes to existing objects:
+#   kubectl delete clusterrolebinding dev-admin
+#   kubectl -n hardening patch deployment legacy-app --type=json -p='[
+#     {"op":"remove","path":"/spec/template/spec/hostPID"},
+#     {"op":"remove","path":"/spec/template/spec/hostNetwork"},
+#     {"op":"remove","path":"/spec/template/spec/containers/0/securityContext"}]'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: baseline-labs
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: restricted-labs
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: seccomp-default
+  namespace: hardening
+spec:
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+  - name: nginx
+    image: nginx:alpine
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: apparmor-default
+  namespace: hardening
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/nginx: runtime/default
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: strict-security
+  namespace: hardening
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 101
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: ["ALL"]
+        add: ["NET_BIND_SERVICE"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: restrict-egress
+  namespace: secure-egress
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+  - ports:
+    - protocol: UDP
+      port: 53
+  - to:
+    - ipBlock:
+        cidr: 10.10.0.0/16
+    ports:
+    - protocol: TCP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: no-token-sa
+  namespace: hardening
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: secret-reader
+  namespace: audit-labs
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["db-credentials"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: secret-reader-binding
+  namespace: audit-labs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: secret-reader
+subjects:
+- kind: ServiceAccount
+  name: auditor
+  namespace: audit-labs
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-view
+  namespace: hardening
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+- kind: ServiceAccount
+  name: dev
+  namespace: hardening
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: api-keys
+  namespace: hardening
+immutable: true
+stringData:
+  token: s3cr3t
+---
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+handler: runsc
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sandboxed
+  namespace: hardening
+spec:
+  runtimeClassName: gvisor
+  containers:
+  - name: nginx
+    image: nginx:alpine

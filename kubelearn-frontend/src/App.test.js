@@ -19,7 +19,9 @@ test('shows the start button and the question list before an attempt starts', ()
   // Resource names written in backticks are shown as code.
   expect(screen.getByRole('heading', { name: /create a namespace called\s*europe/i })).toBeInTheDocument();
   expect(screen.getByText('europe').tagName).toBe('CODE');
-  expect(global.fetch).not.toHaveBeenCalled();
+  // Only the catalog is requested; the cluster is not evaluated yet.
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+  expect(global.fetch).toHaveBeenCalledWith('http://localhost:8083/catalog');
 });
 
 test('loads the questions from the backend when the quiz starts', async () => {
@@ -135,5 +137,65 @@ describe('check progress', () => {
     expect(await screen.findByText(/results overview/i)).toBeInTheDocument();
     expect(await screen.findByText(unsolved.Feedback)).toBeInTheDocument();
     expect(screen.getByText('Review needed')).toBeInTheDocument();
+  });
+});
+
+describe('tracks', () => {
+  const catalog = [
+    { TestName: 'Question 1 - Core task', Difficulty: 'Easy', Track: 'Core' },
+    { TestName: 'Question 27 - Security task', Difficulty: 'Medium', Track: 'CKS' },
+    { TestName: 'Question 38 - Network task one', Difficulty: 'Easy', Track: 'CKNE' },
+    { TestName: 'Question 39 - Network task two', Difficulty: 'Hard', Track: 'CKNE' },
+  ];
+  const backend = (url) => {
+    if (url.endsWith('/catalog')) return jsonResponse(catalog);
+    const track = new URL(url).searchParams.get('track');
+    const results = catalog
+      .filter((q) => !track || q.Track.toLowerCase() === track)
+      .map((q) => ({ ...q, Passed: true }));
+    return url.includes('/finish') ? jsonResponse({ score: 100, results }) : jsonResponse(results);
+  };
+
+  test('lists the questions from the backend catalog with a count per track', async () => {
+    global.fetch.mockImplementation(backend);
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: /security task/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(4);
+    expect(screen.getByRole('radio', { name: 'All track, 4 questions' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'CKS track, 1 questions' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'CKNE track, 2 questions' })).toBeInTheDocument();
+  });
+
+  test('choosing a track limits the list and the attempt to it', async () => {
+    global.fetch.mockImplementation(backend);
+    render(<App />);
+    await screen.findByRole('heading', { name: /security task/i });
+
+    userEvent.click(screen.getByRole('radio', { name: 'CKNE track, 2 questions' }));
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.queryByRole('heading', { name: /security task/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start quiz simulation/i })).toHaveTextContent('Start attempt with 2 questions');
+
+    userEvent.click(screen.getByRole('button', { name: /start quiz simulation/i }));
+    // The same headings exist on the start screen, so wait for the attempt view itself.
+    await screen.findByRole('button', { name: /finish current attempt/i });
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2));
+    expect(global.fetch).toHaveBeenCalledWith('http://localhost:8083/questions?track=ckne');
+
+    userEvent.click(screen.getByRole('button', { name: /finish current attempt/i }));
+    expect(await screen.findByText('2 of 2 questions solved.')).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledWith('http://localhost:8083/finish?track=ckne');
+  });
+
+  test('explains that only the built-in list is available without the backend', async () => {
+    global.fetch.mockImplementation(() => Promise.reject(new Error('connection refused')));
+    render(<App />);
+
+    expect(await screen.findByText(/backend is not answering/i)).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Core track, 26 questions' })).toBeInTheDocument();
+    userEvent.click(screen.getByRole('radio', { name: 'CKS track, 0 questions' }));
+    expect(screen.getByRole('button', { name: /start quiz simulation/i })).toBeDisabled();
   });
 });

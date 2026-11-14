@@ -6,6 +6,7 @@ SHELL := /bin/bash
 # -----------------------------------------------------------------------------
 KUBE_CONTEXT ?= kind-kubelearn
 MANIFESTS_DIR ?= manifests
+GATEWAY_API_VERSION ?= v1.2.1
 TERRAFORM_DIR ?= config
 BACKEND_DIR ?= cmd
 BACKEND_BIN ?= bin/kubelearn
@@ -28,6 +29,7 @@ NPM := npm --prefix $(FRONTEND_DIR)
 	apply-% \
 	manifests-delete \
 	manifests-lint \
+	gateway-api-install \
 	terraform-init \
 	terraform-plan \
 	terraform-apply \
@@ -53,6 +55,7 @@ help: ## Show available targets and configurable variables
 	@echo "Variables:"
 	@echo "  KUBE_CONTEXT    kubectl context to switch to (default: $(KUBE_CONTEXT))"
 	@echo "  MANIFESTS_DIR   directory containing Kubernetes manifests (default: $(MANIFESTS_DIR))"
+	@echo "  GATEWAY_API_VERSION  Gateway API release to install (default: $(GATEWAY_API_VERSION))"
 	@echo "  TERRAFORM_DIR   Terraform configuration directory (default: $(TERRAFORM_DIR))"
 	@echo "  FRONTEND_DIR    Frontend app directory (default: $(FRONTEND_DIR))"
 	@echo "  BACKEND_BIN     Location for compiled backend binary (default: $(BACKEND_BIN))"
@@ -72,6 +75,12 @@ apply-%: $(MANIFESTS_DIR)/% ## Apply a single manifest (usage: make apply-filena
 manifests-delete: ## Delete all manifests in $(MANIFESTS_DIR)
 	@echo "Deleting manifests in $(MANIFESTS_DIR)"
 	@kubectl delete -f $(MANIFESTS_DIR) --ignore-not-found
+
+gateway-api-install: ## Install the Gateway API CRDs and the lab gateway class (needs internet)
+	@echo "Installing Gateway API $(GATEWAY_API_VERSION)"
+	@kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/$(GATEWAY_API_VERSION)/standard-install.yaml
+	@kubectl wait --for=condition=Established --timeout=60s crd/gatewayclasses.gateway.networking.k8s.io crd/gateways.gateway.networking.k8s.io crd/httproutes.gateway.networking.k8s.io
+	@kubectl apply -f $(MANIFESTS_DIR)/addons
 
 manifests-lint: ## Dry-run manifests for basic validation
 	@echo "Validating manifests in $(MANIFESTS_DIR)"

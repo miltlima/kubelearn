@@ -1,0 +1,217 @@
+# Example answers for the CKNE questions (38-54).
+# Three questions need commands instead of new objects:
+#   43: kubectl -n netlab patch deployment web --type=json -p='[{"op":"add",
+#       "path":"/spec/template/spec/containers/0/readinessProbe",
+#       "value":{"httpGet":{"path":"/","port":80}}}]'
+#   44: kubectl -n kube-system edit configmap coredns, and add inside ".:53 {":
+#       rewrite name legacy.internal web.netlab.svc.cluster.local
+#   49: openssl req -x509 -newkey rsa:2048 -nodes -days 30 -keyout tls.key -out tls.crt \
+#         -subj "/CN=shop.example.com" -addext "subjectAltName=DNS:shop.example.com"
+#       kubectl -n netlab create secret tls shop-tls --cert=tls.crt --key=tls.key
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-nodeport
+  namespace: netlab
+spec:
+  type: NodePort
+  selector:
+    app: web
+  ports:
+  - port: 80
+    nodePort: 30080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-headless
+  namespace: netlab
+spec:
+  clusterIP: None
+  selector:
+    app: web
+  ports:
+  - port: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-api
+  namespace: netlab
+spec:
+  type: ExternalName
+  externalName: api.example.com
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-sticky
+  namespace: netlab
+spec:
+  selector:
+    app: web
+  ports:
+  - port: 80
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 600
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-local
+  namespace: netlab
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    app: web
+  ports:
+  - port: 80
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dns-custom
+  namespace: netlab
+spec:
+  dnsPolicy: None
+  dnsConfig:
+    nameservers: ["1.1.1.1"]
+    searches: ["netlab.svc.cluster.local"]
+    options:
+    - name: ndots
+      value: "2"
+  containers:
+  - name: nginx
+    image: nginx:alpine
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: netlab
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-from-frontend
+  namespace: netlab
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  policyTypes: ["Ingress"]
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          team: frontend
+    ports:
+    - protocol: TCP
+      port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-egress-internet
+  namespace: netlab
+spec:
+  podSelector:
+    matchLabels:
+      app: web
+  policyTypes: ["Egress"]
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except: ["10.0.0.0/8"]
+    ports:
+    - protocol: TCP
+      port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shop
+  namespace: netlab
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts: ["shop.example.com"]
+    secretName: shop-tls
+  rules:
+  - host: shop.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web
+            port:
+              number: 80
+---
+# Questions 51 and 54: one gateway with both listeners.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: web-gateway
+  namespace: netlab
+spec:
+  gatewayClassName: kubelearn
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+  - name: https
+    protocol: HTTPS
+    port: 443
+    hostname: shop.example.com
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - name: shop-tls
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web-route
+  namespace: netlab
+spec:
+  parentRefs:
+  - name: web-gateway
+  hostnames: ["shop.example.com"]
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /api
+    backendRefs:
+    - name: api
+      port: 8080
+  - backendRefs:
+    - name: web
+      port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web-canary
+  namespace: netlab
+spec:
+  parentRefs:
+  - name: web-gateway
+  hostnames: ["canary.example.com"]
+  rules:
+  - backendRefs:
+    - name: web
+      port: 80
+      weight: 90
+    - name: web-v2
+      port: 80
+      weight: 10
