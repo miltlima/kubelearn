@@ -1,16 +1,37 @@
 <p align="center">
-  <img src="./assets/kubelearn_logo.png" alt="Kubelearn Logo" width="250"/>
+  <img src="./assets/kubelearn_logo.png" alt="KubeLearn logo" width="250"/>
 </p>
 
-<h1 align="center">Kubelearn</h1>
+<h1 align="center">KubeLearn</h1>
 
 <p align="center">
-  Test your knowledge of Kubernetes — interactive quizzes, timed challenges, and score tracking.
+  Hands-on Kubernetes practice for the CKS and CKNE exams and CKA/CKAD-level fundamentals, on a local cluster, with instant feedback.
+</p>
+
+<p align="center">
+  <a href="https://github.com/miltlima/kubelearn/actions/workflows/ci.yaml"><img src="https://github.com/miltlima/kubelearn/actions/workflows/ci.yaml/badge.svg" alt="CI status"/></a>
+  <a href="https://github.com/miltlima/kubelearn/releases/latest"><img src="https://img.shields.io/github/v/release/miltlima/kubelearn" alt="Latest release"/></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/miltlima/kubelearn" alt="License"/></a>
+  <img src="https://img.shields.io/github/go-mod/go-version/miltlima/kubelearn" alt="Go version"/>
+</p>
+
+<p align="center">
+  <img src="./assets/screenshot-attempt.png" alt="An attempt in progress: the questions with their results on the left and a terminal on the right" width="900"/>
 </p>
 
 ## Overview
 
-KubeLearn is a hands-on Kubernetes practice lab. It provisions a local [kind](https://kind.sigs.k8s.io/) cluster, gives you 54 tasks in three tracks, and inspects the cluster to tell you which ones you solved and why the others are not solved yet.
+KubeLearn is a hands-on Kubernetes practice lab that runs on your machine. It provisions a local [kind](https://kind.sigs.k8s.io/) cluster, gives you 54 tasks in three tracks, and inspects the cluster to tell you which ones you solved and why the others are not solved yet.
+
+- **Real cluster, real `kubectl`.** You solve each task in a kind cluster from the terminal built into the page.
+- **Instant feedback.** Check your progress at any time; every unsolved task says what is missing, for example "Replicas is 1, expected 5".
+- **Three tracks.** Core (CKA and CKAD level), CKS (security) and CKNE (networking), filterable by difficulty.
+- **Three languages.** The interface and the questions are available in English, Portuguese and Spanish.
+- **Local and free.** Nothing leaves your machine, and there is no account or time limit.
+
+<p align="center">
+  <img src="./assets/screenshot-start.png" alt="The start screen: track and difficulty filters above the question cards" width="900"/>
+</p>
 
 It has two parts:
 
@@ -186,12 +207,13 @@ go vet ./...
 npm --prefix kubelearn-frontend test -- --watchAll=false   # frontend tests
 ```
 
-To add a question:
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute. To add a question:
 
 1. Write its checker in the package of its track under `pkg/resources/`. Use `utils.Report` to collect the reasons it is not solved.
 2. Append it to `Questions` in `pkg/resources/registry.go` with its track. The position defines the question number.
 3. Add the objects that solve it to the fixtures in `pkg/resources/checks_test.go`.
 4. If it needs lab resources, add them to a file in `manifests/`.
+5. Add its Portuguese and Spanish statements to `kubelearn-frontend/src/i18n.js`.
 
 Every push to `main` and every pull request runs the build, formatting checks, and tests for both parts (see `.github/workflows/ci.yaml`). Releases are built by GoReleaser when a tag is pushed (see `.github/workflows/release.yaml`).
 
